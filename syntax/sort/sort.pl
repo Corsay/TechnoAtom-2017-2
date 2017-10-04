@@ -2,6 +2,7 @@
 
 use 5.016;
 use warnings;
+use locale;
 use Getopt::Long;
 
 # -ru = -r -u
@@ -207,11 +208,37 @@ sub getDigSufOst {
 	my $digit = 0;
 	my $sufdig = -2;
 	my $ostdig = "";
+	my $f_point = 0;
 	foreach my $val (@letters) {
 		# проверяем что у нас число (учитывая считали мы суффикс или нет!)
-		# ord(0) = 48  ord(9) = 57
-		if ($sufdig == -2 and ord($val) < 58 and ord($val) > 47) {
-			$digit = $digit * 10 + $val;
+		# ord(0) = 48  ord(9) = 57 ord(".") = 46  ord(",") = 44
+		my $ord = ord($val);
+		if ($sufdig == -2 and ($ord < 58 and $ord > 47 or $ord == 44 or $ord == 46)) {
+			# если цифра
+			if ($ord != 44 and $ord != 46) {
+				if ($f_point) {
+					# если дробная часть (приписываем к ней цифру)
+					$digit .= $val;
+				}
+				else {
+					# если целая часть
+					$digit = $digit * 10 + $val;
+				}
+			}
+			else {
+				if ($f_point) {
+					# если точка(или запятая) уже есть, то добавляем этот символ в остаток 
+					# и говорим что число без суффикса
+					$ostdig .= $val;
+					$sufdig = -1;
+				}
+				else {
+					# Иначе добавляем точку к числу(временно переведем его в строку) и ставим флаг
+					$digit .= ".";
+					$f_point = 1; 
+				}
+			}
+
 		}
 		elsif ($sufdig == -2) {
 			# если не числовой символ встречается в первый раз, проверяем на существование его в хеше
