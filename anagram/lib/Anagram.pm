@@ -3,6 +3,7 @@ package Anagram;
 
 use 5.016;
 use warnings;
+use open qw(:utf8 :std);
 
 =encoding UTF8
 
@@ -31,7 +32,6 @@ anagram(['пятак', 'ЛиСток', 'пятка', 'стул', 'ПяТаК', '
 
 должен вернуть ссылку на хеш
 
-
 {
 	'пятак'  => ['пятак', 'пятка', 'тяпка'],
 	'листок' => ['листок', 'слиток', 'столик'],
@@ -41,13 +41,58 @@ anagram(['пятак', 'ЛиСток', 'пятка', 'стул', 'ПяТаК', '
 
 sub anagram {
 	my $words_list = shift;
+	# хэш результата, хэш связка
 	my %result;
-	
+	my %relative;
+
 	#
 	# Поиск анаграмм
 	#
+	# перебираем элементы списка(разименовывая ссылку на массив)
+	foreach (@{$words_list}) {
+		if (ref $_ ne "ARRAY") {
+			# если в строке всего одно слово делаем из него ссылку на это слово
+			$_ = [$_];
+		}
+		foreach (@{$_}) {
+			# разбиваем слово на буквы
+			my @word = split "", fc($_);
+			# сортируем слово и объединяем его
+			@word = sort {$a cmp $b} @word;
+			my $word = join "", @word;
+			# если есть ключ связка(сортированное слово) в хэш связке
+			if (exists $relative{$word}) {
+				# Проверяем на наличие записи в массиве
+				my $key = $relative{$word};
+				my $found = 0;
+				for my $val (@{$result{"$key"}}) {
+					if (fc($val) eq fc($_)) {
+						$found = 1;
+						last;
+					}
+				}
+				unless ($found) {
+					# то добавляем в хэш результат новую запись
+					push @{$result{"$key"}}, fc($_);
+				}
+			}
+			else {
+				# если такого ключа связки нет, то добавим его и запись в хэш результата
+				$relative{$word} = fc($_);
+				$result{"\F$_\E"} = ["\F$_\E"];
+			}
+		}
+	}
 	
-	return \%result;
+	# переносим все нужное в результирующий хеш
+	my %pastresult;
+	while (my ($k, $v) = each %result) {
+		if (@{$v} != 1) {
+			$pastresult{$k} = $v;
+		}
+	}
+
+	return \%pastresult;
 }
 
 1;
