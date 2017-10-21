@@ -11,17 +11,6 @@ use Getopt::Long;
 # -ru = -r -u
 # --ru = -ru 
 Getopt::Long::Configure("bundling");
-use DDP;
-
-# читаем стандартный ввод
-my @line;
-while (<STDIN>) {
-	chomp;	# отсекаем \n
-	push @line, $_;
-}
-
-# еcли массив пустой (допустим пользователь передал пустой файл или не передал вовсе введя вручную сtrl+D ) 
-die "Нечего фильтровать" unless @line; 
 
 # Получаем ключи и параметры
 my $pattern = ""; # пустой паттерн(или точные данные для поиска)
@@ -68,7 +57,7 @@ if ($flag_c) {
 # функция выделения найденного по умолчанию по паттерну # 0 - str 1 - pattern
 my $paint_sub = sub { GetColoredPatternStr($_[0], $_[1]); };
 # функция сравнения по умолчанию по паттерну # 0 - str 1 - pattern (возвращает 1 - соответствует, -1 - не соответствует)
-my $check_sub = sub { $_[0] =~ /.*$_[1].*/ ? return 1 : return -1; };
+my $check_sub = sub { $_[0] =~ /$_[1]/ ? return 1 : return -1; };
 my $check_sub_F = sub { return index($_[0], $_[1]); };
 if ($flag_F) {
 	# то ищем через вхождение подстроки в строку # 0 - str 1 - substr
@@ -96,7 +85,7 @@ else {
 	else { $pattern = qr/$pattern/;	}
 	# если установлена опция -v исключать, то проверяем на не совпадение паттерну
 	if ($flag_v) {	# 0 - str 1 - pattern
-		$check_sub = sub { $_[0] !~ /.*$_[1].*/ ? return 1 : return -1;	};
+		$check_sub = sub { $_[0] !~ /$_[1]/ ? return 1 : return -1;	};
 	}
 }
 
@@ -110,7 +99,8 @@ my $inAB = 0;		# полезно при пересечении -- от А и вы
 my $first = 1;		
 my $linenum = 1;	# к опции -n
 my $linecount = 0;	# к опции -c
-foreach (@line) {
+while (<STDIN>) {
+	chomp;
 	my $elem = $_;
 	if ($check_sub->($elem, $pattern) != -1) {
 		# если установлена опция -с не выводим текстовую информацию
