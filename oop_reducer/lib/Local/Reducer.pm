@@ -2,6 +2,7 @@ package Local::Reducer;
 
 use strict;
 use warnings;
+use utf8;
 
 =encoding utf8
 
@@ -20,5 +21,22 @@ our $VERSION = '1.00';
 =head1 SYNOPSIS
 
 =cut
+
+# Параметры конструктора:
+# * `source` — объект, выдающий строки из лога (см. ниже);
+# * `row_class` — имя класса, с помощью которого создаются объекты из каждой строки логов (см. ниже);
+# * `initial_value` — инициализационое значение для операции схлопывания.
+sub new {
+	my ($class, %param) = @_;
+	my $self;
+	$self->{$_} = $param{$_} foreach qw (field top bottom source row_class);
+	$self->{reduced_value} = $param{initial_value};
+	return bless $self, $class;
+}
+
+# * `reduced` — промежуточный результат.
+sub reduced {
+	return $_[0]->{reduced_value};
+}
 
 1;
