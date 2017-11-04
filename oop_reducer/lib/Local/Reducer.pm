@@ -39,4 +39,9 @@ sub reduced {
 	return $_[0]->{reduced_value};
 }
 
+# * `reduce_all()` — схлопнуть все оставшиеся строки, вернуть результат.
+sub reduce_all {
+	return $_[0]->reduce_n;
+}
+
 1;
