@@ -43,8 +43,10 @@ pod2usage(-exitval => 0, -verbose => 2) if $param->{man};
 
 # выбираем что использовать UDP или TCP
 $param->{proto} = "tcp";
+$param->{type} = SOCK_STREAM;
 if ($param->{u}) {
 	$param->{proto} = "udp";
+	$param->{type} = SOCK_DGRAM;
 }
 
 # вызываем функцию отправки данных
@@ -57,7 +59,8 @@ sub WriteToDestByPort {
 		PeerAddr => $param->{dest},
 		PeerPort => $param->{port},
 		Proto => $param->{proto},
-	) or die "Can't connect to $param->{dest} $/";
+		Type => $param->{type},
+	) or die "Can't connect to $param->{dest}:$param->{port} $/";
 
 	my $pid;
 	if ($pid = fork()) {

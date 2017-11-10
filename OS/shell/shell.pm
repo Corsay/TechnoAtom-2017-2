@@ -8,11 +8,6 @@ use Cwd;
 use Getopt::Long;
 use Pod::Usage;
 
-#Необходимо реализовать собственный шелл
-#	`встроенные команды: cd/pwd/echo/kill/ps`
-#	`поддержать fork/exec команды`
-#	`конвеер на пайпах`
-
 =head1 NAME
 
  Shell - own shell.
@@ -68,8 +63,14 @@ my %commands = (	# хеш команд
 use DDP;
 use 5.016;
 
+say "PID  - $$";
+say "GID  - $(";
+say "EGID - $)";
+say "UID  - $>";
+say "EUID - $<";
+
 {
-	# обрабатываем ctrl+c аналогию sh
+	# обрабатываем ctrl+c по аналогии sh
 	local $SIG{INT} = 'IGNORE';
 
 	while( is_interactive() ){
@@ -84,8 +85,10 @@ use 5.016;
 		next unless $line;	# ctrl+c
 		# инкремент количества команд
 		$comCount++;
+
 		# обрабатываем команду
-		my @line = split /\s+/, $line;
+		$line =~ /\s*(.+)/;	# убираем разделители в начале
+		my @line = split /\s+/, $1;
 		if (exists $commands{$line[0]})	{
 			# а вот тут уже можно делать конвейер pipe
 			$commands{$line[0]}->(*STDOUT, *STDIN, @line);
@@ -106,7 +109,7 @@ sub is_interactive {
 # без параметра - переход в home каталог (~)
 sub cd {
 	my ($name, @argv) = @_;
-	# еshсли есть аргумент используем его
+	# если есть аргумент используем его
 	if ($argv[0]) {
 		$argv[0] =~ s/~/$ENV{HOME}/;
 		# chdir возвращает 0 в случае неудачи
@@ -131,37 +134,61 @@ sub pwd {
 # выводим то что передано параметрами в $wfh
 sub echo {
 	my ($wfh, $rfh, $name, @argv) = @_;
-	print join ' ', @argv;
-	print "\n";
+	print {$wfh} join ' ', @argv;
+	print {$wfh} "\n";
 }
 
-# 
+# посылает сигнал TERM указаным в @argv процессам
 sub shell_kill {
-	my ($name, $wfh, $rfh, @argv) = @_;
-	return undef;
+	my ($wfh, $rfh, $name, @argv) = @_;
+	# если не передали параметров, выводим способ использования:
+	unless (@argv) {
+		print "$name: использование: kill pid ...\n";
+	}
+	# перебираем аргументы и завершаем соответствующие процессы
+	foreach (@argv) {
+		# если передали валидный pid (число)
+		if ($_ =~ /^(\d+)$/) {
+			unless (kill 'TERM', $_) {
+				print "$0: $name: ($_) - Нет такого процесса\n";
+			}
+		}
+		else {
+			print "$0: $name: $_: аргументы должны быть идентификаторами процесса\n";
+		}
+	}
 }
 
 # выводим таблицу процессов в $wfh
 sub ps {
 	my ($wfh, $rfh, $name, @argv) = @_;
-	# запоминаем текущий каталог и переходим в /proc
+	# запоминаем текущую директорию и переходим в /proc
 	my $curdir = getcwd();
-	chdir $ENV{HOME};
 	chdir "/proc";
 
-	# восстанавливаем текущую дирректорию
+	# ищем информацию в /proc
+	open (my $fh, "<", 'self/status');
+	while (my $row = <$fh>) {
+		chomp($row);
+		print $row."\n";
+	}
+
+	# выводим найденную информацию 
+	print {$wfh} "  PID TTY          TIME CMD\n";
+
+	# восстанавливаем исходную дирректорию
 	chdir $curdir;
 }
 
 # форкаем процесс и выполняем exec (подмену)
 sub shell_exec {
-	my ($name, @argv) = @_;
+	my ($wfh, $rfh, $name, @argv) = @_;
 	# Еcли не передали параметр, cообщим об этом
 	unless ($argv[0]) {
-		print "Nothing to $name. \n";
+		#print "Nothing to $name. \n";
 		return;
 	}
-
+	# выполняем fork и exec
 	unless (my $pid  = fork()) {
 		exec "$argv[0]";
 		exit;
@@ -172,7 +199,6 @@ sub shell_exec {
 
 # функция выхода из программы
 sub shell_exit {
-	my ($name, @argv) = @_;
 	if (wait() == -1) {	# ждем завершения дочерних процессов
 		print "Goodbye$/";	
 		exit;
