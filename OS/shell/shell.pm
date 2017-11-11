@@ -40,7 +40,7 @@ pod2usage(-verbose => 2) if $param->{man};
 # чистим ARGV и даем warn
 if ($ARGV[0]) {
 	@ARGV = ();
-	warn "We don't wait a param to shell.";
+	warn "Оболочка не ожидает параметров. Параметры отброшены.";
 }
 
 # Основные данные
@@ -87,15 +87,18 @@ say "EUID - $<";
 		$comCount++;
 
 		# обрабатываем команду
-		$line =~ /\s*(.+)/;	# убираем разделители в начале
-		my @line = split /\s+/, $1;
+		my @line = split/\|/, $line;	# разделяем команды по пайпу |
+		p @line;
+		#$line =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
+		#@line = split /\s+/, @line;	# разделяем части каждой команды по разделителю
+		#p @line;
 		if (exists $commands{$line[0]})	{
 			# а вот тут уже можно делать конвейер pipe
 			$commands{$line[0]}->(*STDOUT, *STDIN, @line);
 		}
 		else {
 			# выводим сообщение и Usage
-			print "$0: $comCount: $line[0]: not found.$/";
+			print "$0: $comCount: $line[0]: команда не найдена.$/";
 			#pod2usage(-exitval => "NOEXIT");
 		}
 	}
@@ -108,7 +111,7 @@ sub is_interactive {
 # один параметр - путь
 # без параметра - переход в home каталог (~)
 sub cd {
-	my ($name, @argv) = @_;
+	my ($wfh, $rfh, $name, @argv) = @_;
 	# если есть аргумент используем его
 	if ($argv[0]) {
 		$argv[0] =~ s/~/$ENV{HOME}/;
@@ -138,7 +141,7 @@ sub echo {
 	print {$wfh} "\n";
 }
 
-# посылает сигнал TERM указаным в @argv процессам
+# посылает сигнал TERM указанным в @argv процессам
 sub shell_kill {
 	my ($wfh, $rfh, $name, @argv) = @_;
 	# если не передали параметров, выводим способ использования:
@@ -167,11 +170,11 @@ sub ps {
 	chdir "/proc";
 
 	# ищем информацию в /proc
-	open (my $fh, "<", 'self/status');
-	while (my $row = <$fh>) {
-		chomp($row);
-		print $row."\n";
-	}
+	#open (my $fh, "<", 'self/status');
+	#while (my $row = <$fh>) {
+	#	chomp($row);
+	#	print $row."\n";
+	#}
 
 	# выводим найденную информацию 
 	print {$wfh} "  PID TTY          TIME CMD\n";
@@ -200,12 +203,12 @@ sub shell_exec {
 # функция выхода из программы
 sub shell_exit {
 	if (wait() == -1) {	# ждем завершения дочерних процессов
-		print "Goodbye$/";	
+		print "Всего доброго!$/";	
 		exit;
 	}
 	else {
 		# если процессы не завершены
-		print "Not all process are ended.\n";
+		print "Не все процессы завершены\n";
 	}
 }
 
