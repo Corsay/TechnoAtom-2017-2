@@ -1,4 +1,4 @@
-package Netcat 1.00;
+package netcat 1.00;
 
 use strict;
 use warnings;

@@ -1,4 +1,4 @@
-package Shell 1.00;
+package shell 1.00;
 
 use strict;
 use warnings;
@@ -57,23 +57,18 @@ my %commands = (	# хеш команд
 	exec => \&shell_exec,
 	$Exit => \&shell_exit,
 	clear => sub { system('clear'); },	# удобно убирать лапшу с экрана
-	ls => sub { system('ls'); },
+	#ls => sub { system('ls'); },
 );
 
 use DDP;
 use 5.016;
 
-say "PID  - $$";
-say "GID  - $(";
-say "EGID - $)";
-say "UID  - $>";
-say "EUID - $<";
-
+$|=1;
 {
 	# обрабатываем ctrl+c по аналогии sh
 	local $SIG{INT} = 'IGNORE';
 
-	while( is_interactive() ){
+	while( 1 ){
 		# выводим приглашение и считываем пользовательсукую команду
 		print $PS2;
 		my $line = <>;
@@ -88,25 +83,78 @@ say "EUID - $<";
 
 		# обрабатываем команду
 		my @line = split/\|/, $line;	# разделяем команды по пайпу |
-		p @line;
-		#$line =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
-		#@line = split /\s+/, @line;	# разделяем части каждой команды по разделителю
-		#p @line;
-		if (exists $commands{$line[0]})	{
-			# а вот тут уже можно делать конвейер pipe
-			$commands{$line[0]}->(*STDOUT, *STDIN, @line);
+		my $size = @line;
+
+		#my @READER = (*STDIN, *READER, *READER2);
+		#my @WRITER = (*WRITER, *WRITER2);
+		#pipe(READER, WRITER);
+		#pipe(READER2, WRITER2);
+		# выводить через WRITER2
+=head
+		my ($r, $w);
+		pipe($r, $w);
+		if (my $pid = fork()){
+			close($w);
+			while(<$r>){ print $_ }
+			close($r);
+			waitpid($pid, 0);
 		}
 		else {
-			# выводим сообщение и Usage
-			print "$0: $comCount: $line[0]: команда не найдена.$/";
-			#pod2usage(-exitval => "NOEXIT");
+			die "Cannot fork $!" unless defined $pid;
+			close($r);
+			print $w $_ for 1..5;
+			close($w);			
+			exit;
 		}
+=cut
+
+		# пока в @line есть команды
+		while (@line) {
+			my $comm = shift @line;
+			$comm =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
+			my @comm = split /\s+/, $1;	# разделяем части каждой команды по разделителю
+			# если команда выхода
+			shell_exit() if ($comm[0] eq $Exit);
+			# добивить ли pipe |
+			my $pipe = 0;
+			$pipe = 1 if ($#line > -1);
+			# выполняем команду
+			my $WRITER = *STDOUT;
+			my $READER = *STDIN;
+			$WRITER->autoflush(1);
+
+			my $pid;
+			if ($pid = fork) {
+
+				#waitpid($pid, 0);
+			}
+			else {
+				die "cannot fork: $!" unless defined $pid;
+
+				if (exists $commands{$comm[0]})	{
+					$commands{$comm[0]}->(*$WRITER, *$READER, @comm);
+				}
+				else {
+					exec "$comm" . "|"x$pipe;
+				}
+				close $WRITER;
+				close $READER;
+
+				exit;
+			}
+		}
+
+		# пока не закончились дочерние процессы, ждём
+		while (wait() != -1) {
+			next;
+		}
+
 	}
 }
 
-sub is_interactive {
-	return -t STDIN && -t STDOUT;
-}
+#sub is_interactive {
+#	return -t STDIN && -t STDOUT;
+#}
 
 # один параметр - путь
 # без параметра - переход в home каталог (~)
@@ -165,22 +213,75 @@ sub shell_kill {
 # выводим таблицу процессов в $wfh
 sub ps {
 	my ($wfh, $rfh, $name, @argv) = @_;
-	# запоминаем текущую директорию и переходим в /proc
-	my $curdir = getcwd();
-	chdir "/proc";
-
-	# ищем информацию в /proc
-	#open (my $fh, "<", 'self/status');
-	#while (my $row = <$fh>) {
-	#	chomp($row);
-	#	print $row."\n";
-	#}
-
-	# выводим найденную информацию 
-	print {$wfh} "  PID TTY          TIME CMD\n";
-
-	# восстанавливаем исходную дирректорию
-	chdir $curdir;
+	# выводим инфо строку 
+	print {$wfh} "S   UID   PID  PPID PRI  NI WCHAN  CMD\n";
+	# открываем директорию
+	my %proc;	# хеш для данных о процессах
+	opendir (my $dh, '/proc') or die $!;
+	while (my $fname = readdir $dh) {
+		if ($fname =~ /\d+/) {
+			# от каждого числа -3 - номерв массиве line
+			# 1 - Pid       - PID
+			# 2 - (Name)    - (CMD)
+			# 3 - State     - S
+			# 4 - PPid      - PPID
+			# 18 - priority - PRI
+			# 19 - nice     - NI
+			# 35 - wchan    - WCHAN
+			# читаем нужные файлы процесса
+			# строковый wchan
+			open (my $fh, "<", "/proc/$fname/wchan");
+			my @line = <$fh>;
+			chomp($line[0]);
+			$line[0] =~ /^(.{6})/;
+			$proc{$fname}{WCHAN} = $1 // "-";
+			close ($fh);
+			# Uid
+			open ($fh, "<", "/proc/$fname/status");
+			@line = grep {chomp($_); $_ = "$1" if $_ =~ /Uid:\s+(\d+)/; } <$fh>;
+			$proc{$fname}{UID} = $line[0] // 0;
+			close ($fh);
+			# PRI  NI
+			# PRI = prio - 40
+			# NI  = PRI - 80
+			open ($fh, "<", "/proc/$fname/sched");
+			@line = grep {chomp($_); $_ = "$1" if $_ =~ /prio\s+:\s+(\d+)/;} <$fh>;
+			if ($line[0]) {
+				$proc{$fname}{PRI} = $line[0] - 40;
+				$proc{$fname}{NI} = $proc{$fname}{PRI} - 80;
+			}
+			else {
+				$proc{$fname}{PRI} = -40;
+				$proc{$fname}{NI} = "-";
+			}
+			close ($fh);
+			# считываем PID и CMD и убираем их из строки
+			open ($fh, "<", "/proc/$fname/stat");
+			@line = <$fh>;
+			close ($fh);
+			#                PID      CMD
+			$line[0] =~ s/^((\d+)\s\((.+)\))//;
+			$proc{$fname}{PID} = $2;
+			$proc{$fname}{CMD} = $3;
+			# хеш позиций нужных данных (тип => позиция) (Номер в man - 3)
+			my %poz = (
+				S    => 0,
+				PPID => 1,
+				TTY  => 4,
+				F    => 6,		
+			);
+			# считываем остальные параметры
+			@line = $line[0] =~ /(\S+)/g;
+			while (my ($k, $v) = each %poz) { $proc{$fname}{$k} = $line[$v]; }
+			#print {$wfh} "S   UID   PID  PPID PRI  NI WCHAN  CMD\n";
+			my $line = sprintf("%1s %5d %5d ",$proc{$fname}{S},$proc{$fname}{UID},$proc{$fname}{PID});
+			$line .= sprintf("%5d %3d %3s ",$proc{$fname}{PPID},$proc{$fname}{PRI},$proc{$fname}{NI});
+			$line .= sprintf("%-6s ",$proc{$fname}{WCHAN});
+			$line .= sprintf("%s",$proc{$fname}{CMD});
+			print {$wfh} "$line\n";
+		}
+	}
+	closedir ($dh);
 }
 
 # форкаем процесс и выполняем exec (подмену)
