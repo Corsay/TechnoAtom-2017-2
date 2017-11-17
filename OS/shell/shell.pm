@@ -8,6 +8,8 @@ use Cwd;
 use Getopt::Long;
 use Pod::Usage;
 
+use DDP;
+
 =head1 NAME
 
  Shell - own shell.
@@ -47,23 +49,17 @@ if ($ARGV[0]) {
 my $comCount = 0;	# счётчик команд
 my $PS2 = "> "; 	# приглашение на ввод
 my $Exit = "exit";	# выход
-my %commands = (	# хеш команд
-	cd => \&cd,
-	pwd => \&pwd,
-	echo => \&echo,
-	kill => \&shell_kill,
-	ps => \&ps,
-	fork => \&shell_exec,
-	exec => \&shell_exec,
-	$Exit => \&shell_exit,
-	clear => sub { system('clear'); },	# удобно убирать лапшу с экрана
-	#ls => sub { system('ls'); },
+my %commands = (	# хеш команд (команда, чистить ли STDOUT)
+	cd => { sub => \&cd, clearSTD => 1},
+	pwd => { sub => \&pwd, clearSTD => 1},
+	echo => { sub => \&echo, clearSTD => 1},
+	kill => { sub => \&shell_kill, clearSTD => 1},
+	ps => { sub => \&ps, clearSTD => 1},
+	fork => { sub => \&shell_exec, clearSTD => 1},
+	exec => { sub => \&shell_exec, clearSTD => 1},
+	$Exit => { sub => \&shell_exit, clearSTD => 0},
 );
 
-use DDP;
-use 5.016;
-
-$|=1;
 {
 	# обрабатываем ctrl+c по аналогии sh
 	local $SIG{INT} = 'IGNORE';
@@ -81,91 +77,99 @@ $|=1;
 		# инкремент количества команд
 		$comCount++;
 
-		# обрабатываем команду
+		# обрабатываем команды
 		my @line = split/\|/, $line;	# разделяем команды по пайпу |
 		my $size = @line;
 
-		#my @READER = (*STDIN, *READER, *READER2);
-		#my @WRITER = (*WRITER, *WRITER2);
-		#pipe(READER, WRITER);
-		#pipe(READER2, WRITER2);
-		# выводить через WRITER2
-=head
-		my ($r, $w);
-		pipe($r, $w);
-		if (my $pid = fork()){
-			close($w);
-			while(<$r>){ print $_ }
-			close($r);
-			waitpid($pid, 0);
-		}
-		else {
-			die "Cannot fork $!" unless defined $pid;
-			close($r);
-			print $w $_ for 1..5;
-			close($w);			
-			exit;
-		}
-=cut
-
-		# пока в @line есть команды
-		while (@line) {
-			my $comm = shift @line;
+		# если всего одна команда (критично для команд cd, exit)
+		unless ($#line) {
+			my $comm = shift @line; # забираем команду
 			$comm =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
-			my @comm = split /\s+/, $1;	# разделяем части каждой команды по разделителю
-			# если команда выхода
-			shell_exit() if ($comm[0] eq $Exit);
-			# добивить ли pipe |
-			my $pipe = 0;
-			$pipe = 1 if ($#line > -1);
-			# выполняем команду
-			my $WRITER = *STDOUT;
-			my $READER = *STDIN;
-			$WRITER->autoflush(1);
-
-			my $pid;
-			if ($pid = fork) {
-
-				#waitpid($pid, 0);
-			}
-			else {
-				die "cannot fork: $!" unless defined $pid;
-
+			my @comm = split /\s+/, $1;	# разделяем части команды по разделителю
+			if ($comm[0]) {	# если есть команда
 				if (exists $commands{$comm[0]})	{
-					$commands{$comm[0]}->(*$WRITER, *$READER, @comm);
+					$commands{$comm[0]}{sub}->(@comm);
 				}
 				else {
-					exec "$comm" . "|"x$pipe;
+					shell_exec($comm[0], $comm);
 				}
-				close $WRITER;
-				close $READER;
-
-				exit;
 			}
 		}
+		else {
+			# делаем форк с открытием канала перенаправляющего дочерний STDOUT в READ_FROM_CHILD
+			if (my $pid = open(READ_FROM_CHILD, '-|')) {
+			    print $_ while (<READ_FROM_CHILD>);
+			    close(READ_FROM_CHILD);
+			    waitpid($pid, 0);
+			} else {
+				die "Can't fork: $!" unless defined $pid;
+				# далее первый дочерний процесс
+			    my @childSTDOUT;
+				# пока в @line есть команды
+			    foreach my $num (0..$#line) {
+				    my $comm = $line[$num];	# берем следующую($num) команду
+					$comm =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
+					my @comm = split /\s+/, $1;	# разделяем части каждой команды по разделителю
+					next unless $comm[0]; # если есть команда
+			        pipe(IN_FROM_P, OUT_TO_C);	# для передачи данных из родительского в дочерний (буфер -> STDIN)
+			        pipe(IN_FROM_C, OUT_TO_P);	# для передачи данных из дочернего в родительский (STDOUT -> буфер)
+			        if (my $pidP = fork()) {
+		        		# первый дочерний
+		        		if ($num) {	# если команда не первая
+				            close (IN_FROM_P);
+				            print OUT_TO_C @childSTDOUT;	# передаем STDOUT предыдущей команды в следующую
+				            close (OUT_TO_C);
+				            @childSTDOUT = ();	# чистим чтобы не получить лишнего в выводе
+				        }
+				        close (OUT_TO_P);
+				        while (<IN_FROM_C>) { 
+				            push @childSTDOUT, $_;	# Записываем результат команды в буфер
+				            # далее это уйдет либо в вывод родителю, либо в следующую команду как STDIN
+				        }
+				        close (IN_FROM_C);
+				        waitpid ($pidP, 0);
+			        } else {
+		          		# второй дочерний
+		          		open (STDERR, '>&', 'STDOUT');	# перенаправление STDERR напрямую в STDOUT (в родительский процесс)
+			          	if ($num) {	# если команда не первая
+				            close (OUT_TO_C);
+				            open (STDIN, '<&', 'IN_FROM_P'); # читаем IN_FROM_P(он же OUT_TO_P предыдущей команды) в STDIN текущей
+				            close (IN_FROM_P);
+			          	}
+				        close (IN_FROM_C);
+				        open (STDOUT, '>&', 'OUT_TO_P') or die $!;	# направляем STDOUT текущей команды в OUT
+				        close (OUT_TO_P);
 
-		# пока не закончились дочерние процессы, ждём
-		while (wait() != -1) {
-			next;
+			          	# если команда из реализованных
+			          	if (exists $commands{$comm[0]})	{
+							# выкидываем STDOUT команды если команда не принимает STDIN
+			          		@childSTDOUT = () if ( $commands{$comm[0]}{clearSTD} );
+							$commands{$comm[0]}{sub}->(@comm);
+						}
+						else {
+							exec "$comm" or do {
+								exit; # если была ошибка в exec завершим дочерний процесс
+							}
+						}
+		        	}
+		        } # for 
+	        	print @childSTDOUT; # отправляем родителю накопленный STDOUT
+		    	exit; # завершаем дочерний процесс
+			}	
 		}
-
 	}
 }
-
-#sub is_interactive {
-#	return -t STDIN && -t STDOUT;
-#}
 
 # один параметр - путь
 # без параметра - переход в home каталог (~)
 sub cd {
-	my ($wfh, $rfh, $name, @argv) = @_;
+	my ($name, @argv) = @_;
 	# если есть аргумент используем его
 	if ($argv[0]) {
 		$argv[0] =~ s/~/$ENV{HOME}/;
 		# chdir возвращает 0 в случае неудачи
 		unless (chdir $argv[0]) {
-			print "$name: $argv[0]: Нет такого файла или каталога\n"
+			print STDERR "$name: $argv[0]: Нет такого файла или каталога\n"
 		}
 	}
 	# иначе переходим в каталог home
@@ -175,46 +179,44 @@ sub cd {
 }
 
 # выводит текущий путь
-# $wfh - write to file handler
-# $rfh - read from file handler
 sub pwd {
-	my ($wfh, $rfh, $name, @argv) = @_;
-	print {$wfh} getcwd()."\n";
+	my ($name, @argv) = @_;
+	print getcwd()."\n";
 }
 
 # выводим то что передано параметрами в $wfh
 sub echo {
-	my ($wfh, $rfh, $name, @argv) = @_;
-	print {$wfh} join ' ', @argv;
-	print {$wfh} "\n";
+	my ($name, @argv) = @_;
+	print join ' ', @argv;
+	print "\n";
 }
 
 # посылает сигнал TERM указанным в @argv процессам
 sub shell_kill {
-	my ($wfh, $rfh, $name, @argv) = @_;
+	my ($name, @argv) = @_;
 	# если не передали параметров, выводим способ использования:
 	unless (@argv) {
-		print "$name: использование: kill pid ...\n";
+		print STDERR "$name: использование: kill pid ...\n";
 	}
 	# перебираем аргументы и завершаем соответствующие процессы
 	foreach (@argv) {
 		# если передали валидный pid (число)
 		if ($_ =~ /^(\d+)$/) {
 			unless (kill 'TERM', $_) {
-				print "$0: $name: ($_) - Нет такого процесса\n";
+				print STDERR "$0: $name: ($_) - Нет такого процесса\n";
 			}
 		}
 		else {
-			print "$0: $name: $_: аргументы должны быть идентификаторами процесса\n";
+			print STDERR "$0: $name: $_: аргументы должны быть идентификаторами процесса\n";
 		}
 	}
 }
 
-# выводим таблицу процессов в $wfh
+# выводим таблицу процессов
 sub ps {
-	my ($wfh, $rfh, $name, @argv) = @_;
+	my ($name, @argv) = @_;
 	# выводим инфо строку 
-	print {$wfh} "S   UID   PID  PPID PRI  NI WCHAN  CMD\n";
+	print "S   UID   PID  PPID PRI  NI WCHAN  CMD\n";
 	# открываем директорию
 	my %proc;	# хеш для данных о процессах
 	opendir (my $dh, '/proc') or die $!;
@@ -278,7 +280,7 @@ sub ps {
 			$line .= sprintf("%5d %3d %3s ",$proc{$fname}{PPID},$proc{$fname}{PRI},$proc{$fname}{NI});
 			$line .= sprintf("%-6s ",$proc{$fname}{WCHAN});
 			$line .= sprintf("%s",$proc{$fname}{CMD});
-			print {$wfh} "$line\n";
+			print "$line\n";
 		}
 	}
 	closedir ($dh);
@@ -286,10 +288,10 @@ sub ps {
 
 # форкаем процесс и выполняем exec (подмену)
 sub shell_exec {
-	my ($wfh, $rfh, $name, @argv) = @_;
+	my ($name, @argv) = @_;
 	# Еcли не передали параметр, cообщим об этом
 	unless ($argv[0]) {
-		#print "Nothing to $name. \n";
+		#print STDERR "Nothing to $name. \n";
 		return;
 	}
 	# выполняем fork и exec
@@ -304,12 +306,12 @@ sub shell_exec {
 # функция выхода из программы
 sub shell_exit {
 	if (wait() == -1) {	# ждем завершения дочерних процессов
-		print "Всего доброго!$/";	
+		#print "Всего доброго!$/";	
 		exit;
 	}
 	else {
 		# если процессы не завершены
-		print "Не все процессы завершены\n";
+		#print "Не все процессы завершены\n";
 	}
 }
 
