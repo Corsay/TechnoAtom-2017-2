@@ -5,8 +5,6 @@ use warnings;
 
 use IO::Socket;
 use AnyEvent::HTTP;
-#use Web::Query;
-#use Coro::LWP;
 use URI;
 
 use Getopt::Long;
@@ -20,6 +18,15 @@ use DDP;
 =head1 SYNOPSIS
 
 =cut
+
+# Параметры по-умолчанию
+my $debug = 0;
+my $out_like_wget = 0;
+my %def = (
+	prot => 'http',
+	port_http => 80,
+	port_https => 443,
+);
 
 # Информационное сообщение и функция для его вывода с выходом(аналогия wget)
 my $errorHelpInfo = "Использование: perl $0 [КЛЮЧ]... [URL]...\n
@@ -74,96 +81,106 @@ say "\x1b[1;31m"."Параллельно с лимитом"."\x1b[0m";
 	$cv->end; $cv->recv;
 }
 =cut
+$AnyEvent::HTTP::MAX_PER_HOST = my $LIMIT = 100;
 
-# перебираем URL ... из ARGV
-foreach my $url (@ARGV) {
-	#my $url = $_;
-	#my $ip = gethostbyname $url;
+### схожее с выводом в wget
+my %rec = (); # Recognized - распознанные url
+###
 
-	# проверяем является ли валидным ip (наивно?)
-	my $valid = 1;	# не является валидным ip
-	if ($url =~ /^(\d{1,3}).(\d{1,3}).(\d{1,3}).(\d{1,3})$/) {
-		$valid = 0;	# является валидным ip
-		$valid = 1 if ($1 > 255 or $2 > 255 or $3 > 255 or $4 > 255);	# не валидный ip
+# перебираем URL ... из Queue
+my @queue = @ARGV;
+my $cv = AE::cv; $cv->begin; # begin
+
+my $next; $next = sub {
+	my $url = shift @queue or return;
+
+	# debug - отладочное (URL)
+	if ($debug) {
+		print "\x1b[1;32m"."defurl - $url\n"."\x1b[0m";	#p $url;
 	}
-
-	print "--2017-11-16 15:16:18-- http://$url/\n";		# выводится в wget всегда
-	print "Распознаётся $url ($url)... " if $valid;		# выводится в wget когда параметр доменное имя
-
-	my $ip = gethostbyname $url;
-	my $port = 80;
+	# определяем протокол, домен, порт и параметры
+	my ($prot, $domain, $port, $params);
+	#         ????????      ????????????
+	#         https://DOMAIN:Port/PARAMS
+	$url =~ /(https?)?:?(\/\/)?([^\/:]*):?([^\/]*)?\/?(.*)/;	# парсим поданный на вход url
+	$prot = $1 // $def{prot};	# получаем протокол (http или https)
+	$domain = $3;				# получаем доменное имя
+	$port = $4;					# получаем порт
+	unless ($port) {# если не указан порт, берем порт по умолчанию
+		$port = $prot eq 'http' ? $def{port_http} : $def{port_https};
+	}
+	$params = $5;				# все остальные параметры url
+	$url = "$prot://$domain:$port/$params";	# формируем нужный формат url
+	my $ip = gethostbyname $domain;		# получаем ip (для распознования домена)
+	my $inet_ip = ''; $inet_ip = inet_ntoa($ip) if $ip;
+	# debug - отладочное (URL)
+	if ($debug) {
+		print "\x1b[32m"."prot   - \x1b[31m". $prot ."\x1b[0m"."\n"; 	#p $prot;
+		print "\x1b[32m"."domain - \x1b[34m". $domain ."\x1b[0m"."\n"; 	#p $domain;
+		print "\x1b[32m"."port   - \x1b[31m". $port ."\x1b[0m"."\n"; 	#p $port;
+		print "\x1b[32m"."url    - \x1b[34m". $url ."\x1b[0m"."\n"; 	#p $url;
+		print "\x1b[32m"."params - \x1b[31m". $params ."\x1b[0m"."\n"; 	#p $params;
+		if ($ip) {
+			print "\x1b[32m"."ip     - \x1b[34m". $ip ."\x1b[0m"."\n"; 	#p $ip;
+			print "\x1b[32m"."dig ip - \x1b[31m". $inet_ip ."\x1b[0m"."\n";
+		}
+	}
 
 	# если удалось получить ip (распознать доменное имя)
 	if (defined $ip) {
-=head
-		my $inet_ip = inet_ntoa($ip);
-		print $inet_ip . "\n" if $valid; # дополняем предыдущую строку выводом ip распознаного домена
-		print "Подключение к $url"." ($url)|$inet_ip|"x$valid.":$port... ";
-		# создаем сокет(TCP)? И если смог приконектить то "соединение установлено".
-		my $SockError = 0;
-		my $socket = IO::Socket::INET->new(
-			PeerAddr => $inet_ip,
-			PeerPort => $port,
-			Proto => 'tcp',
-			Type => SOCK_STREAM,
-		) or $SockError = 1;
-		if ($SockError) {
-			# при ошибке подключения ($1 - первый байт ip адреса из проверки url на валидный ip)
-			if ($1 == 0) {print "ошибка: Недопустимый аргумент.\n";}
-			else {print "ошибка: Сеть недоступна.\n";}
-			next;
-		};
-		print "соединение установлено.\n";
+		$cv->begin;	# begin
+		http_request
+			HEAD => $url,
+			timeout => 1,
+			sub {
+				my ($body, $hdr) = @_;
+				### схожее с выводом в wget
+				if ($out_like_wget) {	# если нужно видеть вывод как в wget
+					# проверяем является ли валидным ip
+					my $valid = 1;	# не является валидным ip
+					if ($domain =~ /^(\d{1,3}).(\d{1,3}).(\d{1,3}).(\d{1,3})$/) {
+						$valid = 0;	# является валидным ip
+						$valid = 1 if ($1 > 255 or $2 > 255 or $3 > 255 or $4 > 255);	# не валидный ip
+					}
+					print "--2017-11-16 15:16:18-- $url\n";
+					my $valid_out = 0;
+					if ($valid and not exists $rec{$domain}) {
+						# выводится в wget когда параметр доменное имя, которое не было распознанно ранее
+						$rec{$domain} = $inet_ip;
+						print "Распознаётся $domain ($domain)... ";
+						$valid_out = 1;
+					}
+					print "$inet_ip\n" if ($valid_out); # дополняем предыдущую строку выводом ip распознаного домена
+					print "Подключение к $domain"." ($domain)|$inet_ip|"x$valid.":$port... ";
+					print "соединение установлено\n";
+					print "HTTP-запрос отправлен. Ожидание ответа... ";
+				}
+				###
 
-		# отправление http запроса
-		print $socket
-			"GET / HTTP/1.0\nHost: $url\n\n";
-		#print "HTTP-запрос отправлен. Ожидание ответа... ";
+				if ($hdr->{Status} == 200) {
+					# получен ответ
+					say "Success: ".length $body;
+				} else {
+					# иначе неудача
+					say "Fail: @$hdr{qw(Status Reason)}";
+				}
 
-
-		# парсим ответ
-		#use AnyEvent::HTTP;
-		use Web::Query;
-		#use Coro::LWP;
-		use URI;
-
-		my @answer = <$socket>;
-		#foreach (@answer) {
-		#	chomp($_);
-		#	last if ($_ eq '');
-		#	print "$_\n";
-		#}
-		#print @answer[0..9];
-		#p @answer;
-		say "";
-		my $w = Web::Query->new_from_html(join ' ',@answer);
-		say $w->find('head')->attr->html;
-		#say "";
-		#say "";
-		#say $w->find('body')->html();
-		#say Web::Query::wq($w->text())->text;
-		#say $w->as_html();
-		#say $w->html();
-		#$w->each(sub { 
-		#	my ($i, $elem) = @_;
-		#	print "$i: $elem\n";
-		#	#p $i;
-		#	p $elem; 
-		#});
-		#p $w;
-		#my $w = Web::Query->new_from_html(@answer);
-		#p $w;
-
-		# отключаем соединение и закрываем сокет
-		shutdown ($socket, 2);
-		close ($socket);
-=cut
+				while (@queue) {
+					$next->();
+				}
+				print "\n";
+				$cv->end; # end
+			}
+		;
 	}
 	else {
 		# если не удалось получить ip (распознать доменное имя)
 		print "ошибка: Имя или служба не известны.\n";
-		print "wget: не удаётся разрешить адрес «$url».\n";
+		print "wget: не удаётся разрешить адрес «$domain».\n";
 	}
-}
+
+}; $next->();
+
+$cv->end; $cv->recv; # end
 
 1;
