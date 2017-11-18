@@ -96,52 +96,52 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 		else {
 			# делаем форк с открытием канала перенаправляющего дочерний STDOUT в READ_FROM_CHILD
 			if (my $pid = open(READ_FROM_CHILD, '-|')) {
-			    print $_ while (<READ_FROM_CHILD>);
-			    close(READ_FROM_CHILD);
-			    waitpid($pid, 0);
+				print $_ while (<READ_FROM_CHILD>);
+				close(READ_FROM_CHILD);
+				waitpid($pid, 0);
 			} else {
 				die "Can't fork: $!" unless defined $pid;
 				# далее первый дочерний процесс
-			    my @childSTDOUT;
+				my @childSTDOUT;
 				# пока в @line есть команды
-			    foreach my $num (0..$#line) {
-				    my $comm = $line[$num];	# берем следующую($num) команду
+				foreach my $num (0..$#line) {
+					my $comm = $line[$num];	# берем следующую($num) команду
 					$comm =~ /\s*(.+)/;	# убираем разделители в начале и в конце для каждоц строки
 					my @comm = split /\s+/, $1;	# разделяем части каждой команды по разделителю
 					next unless $comm[0]; # если есть команда
-			        pipe(IN_FROM_P, OUT_TO_C);	# для передачи данных из родительского в дочерний (буфер -> STDIN)
-			        pipe(IN_FROM_C, OUT_TO_P);	# для передачи данных из дочернего в родительский (STDOUT -> буфер)
-			        if (my $pidP = fork()) {
-		        		# первый дочерний
-		        		if ($num) {	# если команда не первая
-				            close (IN_FROM_P);
-				            print OUT_TO_C @childSTDOUT;	# передаем STDOUT предыдущей команды в следующую
-				            close (OUT_TO_C);
-				            @childSTDOUT = ();	# чистим чтобы не получить лишнего в выводе
-				        }
-				        close (OUT_TO_P);
-				        while (<IN_FROM_C>) { 
-				            push @childSTDOUT, $_;	# Записываем результат команды в буфер
-				            # далее это уйдет либо в вывод родителю, либо в следующую команду как STDIN
-				        }
-				        close (IN_FROM_C);
-				        waitpid ($pidP, 0);
-			        } else {
-		          		# второй дочерний
-		          		open (STDERR, '>&', 'STDOUT');	# перенаправление STDERR напрямую в STDOUT (в родительский процесс)
-			          	if ($num) {	# если команда не первая
-				            close (OUT_TO_C);
-				            open (STDIN, '<&', 'IN_FROM_P'); # читаем IN_FROM_P(он же OUT_TO_P предыдущей команды) в STDIN текущей
-				            close (IN_FROM_P);
-			          	}
-				        close (IN_FROM_C);
-				        open (STDOUT, '>&', 'OUT_TO_P') or die $!;	# направляем STDOUT текущей команды в OUT
-				        close (OUT_TO_P);
+					pipe(IN_FROM_P, OUT_TO_C);	# для передачи данных из родительского в дочерний (буфер -> STDIN)
+					pipe(IN_FROM_C, OUT_TO_P);	# для передачи данных из дочернего в родительский (STDOUT -> буфер)
+				if (my $pidP = fork()) {
+						# первый дочерний
+						if ($num) {	# если команда не первая
+						close (IN_FROM_P);
+							print OUT_TO_C @childSTDOUT;	# передаем STDOUT предыдущей команды в следующую
+							close (OUT_TO_C);
+							@childSTDOUT = ();	# чистим чтобы не получить лишнего в выводе
+						}
+						close (OUT_TO_P);
+						while (<IN_FROM_C>) { 
+							push @childSTDOUT, $_;	# Записываем результат команды в буфер
+							# далее это уйдет либо в вывод родителю, либо в следующую команду как STDIN
+						}
+						close (IN_FROM_C);
+						waitpid ($pidP, 0);
+					} else {
+						# второй дочерний
+						open (STDERR, '>&', 'STDOUT');	# перенаправление STDERR напрямую в STDOUT (в родительский процесс)
+						if ($num) {	# если команда не первая
+							close (OUT_TO_C);
+							open (STDIN, '<&', 'IN_FROM_P'); # читаем IN_FROM_P(он же OUT_TO_P предыдущей команды) в STDIN текущей
+							close (IN_FROM_P);
+						}
+						close (IN_FROM_C);
+						open (STDOUT, '>&', 'OUT_TO_P') or die $!;	# направляем STDOUT текущей команды в OUT
+						close (OUT_TO_P);
 
-			          	# если команда из реализованных
-			          	if (exists $commands{$comm[0]})	{
+						# если команда из реализованных
+						if (exists $commands{$comm[0]})	{
 							# выкидываем STDOUT команды если команда не принимает STDIN
-			          		@childSTDOUT = () if ( $commands{$comm[0]}{clearSTD} );
+							@childSTDOUT = () if ( $commands{$comm[0]}{clearSTD} );
 							$commands{$comm[0]}{sub}->(@comm);
 						}
 						else {
@@ -149,10 +149,10 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 								exit; # если была ошибка в exec завершим дочерний процесс
 							}
 						}
-		        	}
-		        } # for 
-	        	print @childSTDOUT; # отправляем родителю накопленный STDOUT
-		    	exit; # завершаем дочерний процесс
+					}
+				} # for 
+				print @childSTDOUT; # отправляем родителю накопленный STDOUT
+				exit; # завершаем дочерний процесс
 			}	
 		}
 	}
