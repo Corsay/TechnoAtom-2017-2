@@ -8,8 +8,6 @@ use Cwd;
 use Getopt::Long;
 use Pod::Usage;
 
-use DDP;
-
 =head1 NAME
 
  Shell - own shell.
@@ -305,14 +303,7 @@ sub shell_exec {
 
 # функция выхода из программы
 sub shell_exit {
-	if (wait() == -1) {	# ждем завершения дочерних процессов
-		#print "Всего доброго!$/";	
-		exit;
-	}
-	else {
-		# если процессы не завершены
-		#print "Не все процессы завершены\n";
-	}
+	exit;
 }
 
 1;
