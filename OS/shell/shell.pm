@@ -111,7 +111,7 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 					next unless $comm[0]; # если есть команда
 					pipe(IN_FROM_P, OUT_TO_C);	# для передачи данных из родительского в дочерний (буфер -> STDIN)
 					pipe(IN_FROM_C, OUT_TO_P);	# для передачи данных из дочернего в родительский (STDOUT -> буфер)
-				if (my $pidP = fork()) {
+					if (my $pidP = fork()) {
 						# первый дочерний
 						if ($num) {	# если команда не первая
 						close (IN_FROM_P);
