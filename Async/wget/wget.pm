@@ -7,6 +7,8 @@ use IO::Socket;
 use AnyEvent::HTTP;
 use URI;
 
+use File::Path qw/make_path/;
+
 use Getopt::Long;
 use Pod::Usage;
 
@@ -20,8 +22,6 @@ use DDP;
 =cut
 
 # Параметры по-умолчанию
-my $debug = 0;
-my $out_like_wget = 0;
 my %def = (
 	prot => 'http',
 	port_http => 80,
@@ -37,6 +37,10 @@ sub ErrorInfoMsg {
 	exit;
 }
 
+# -ru = -r -u
+# --ru = -ru
+Getopt::Long::Configure("bundling");
+
 # Получаем опции в Хеш
 my $param = {};
 GetOptions ($param, 'help|?', 'man', 'N=i', 'r', 'l=i', 'L', 'S') 
@@ -49,55 +53,25 @@ ErrorInfoMsg("wget: не указан URL\n$errorHelpInfo") unless (@ARGV);	# н
 pod2usage(1) if $param->{help};
 pod2usage(-exitval => 0, -verbose => 2) if $param->{man};
 
-# AnyEvent
-#use AnyEvent::IO;
-=head
-sub async {
-	my $cb = pop;
-	my $w; $w = AE::timer rand(0.1),0,sub {
-		undef $w;
-		$cb->();
-	};
-	return;
-}
+# проверяем остальные параметры
+$param->{N} = 1 if (not exists $param->{N} or $param->{N} == 0);	# если параметр N не задан или равен 0
+# если параметр l = 0 то это бесконечная глубина и просто удалим ключ -l
+delete $param->{l} if (exists $param->{l} and $param->{l} == 0);
 
-# Параллельно с лимитом
-say "\x1b[1;31m"."Параллельно с лимитом"."\x1b[0m";
-{
-	my $cv = AE::cv; $cv->begin;
-	my @array = 1..5;
-	my $i = 0;
-	my $next; $next = sub {
-		my $cur = $i++;
-		return if $cur > $#array;
-		say "\x1b[32m"."Process"."\x1b[0m $array[$cur]";
-		$cv->begin;
-		async sub {
-			say "\x1b[1;32m"."Processed"."\x1b[0m $array[$cur]";
-			$next->();
-			$cv->end;
-		};
-	}; $next->() for 1..3;
-	$cv->end; $cv->recv;
-}
-=cut
+# перебираем URL ... из ARGV
 $AnyEvent::HTTP::MAX_PER_HOST = my $LIMIT = 100;
 
-### схожее с выводом в wget
-my %rec = (); # Recognized - распознанные url
-###
+# Перебираем URL ... из queueURL
+my @queueURL = @ARGV;
 
-# перебираем URL ... из Queue
-my @queue = @ARGV;
 my $cv = AE::cv; $cv->begin; # begin
 
-my $next; $next = sub {
-	my $url = shift @queue or return;
+# перебираем URI ... из Queue
+my $nextURL; $nextURL = sub {
+	my $url = shift @queueURL or return;
 
-	# debug - отладочное (URL)
-	if ($debug) {
-		print "\x1b[1;32m"."defurl - $url\n"."\x1b[0m";	#p $url;
-	}
+	$cv->begin; # begin
+
 	# определяем протокол, домен, порт и параметры
 	my ($prot, $domain, $port, $params);
 	#         ????????      ????????????
@@ -106,80 +80,150 @@ my $next; $next = sub {
 	$prot = $1 // $def{prot};	# получаем протокол (http или https)
 	$domain = $3;				# получаем доменное имя
 	$port = $4;					# получаем порт
-	unless ($port) {# если не указан порт, берем порт по умолчанию
+	unless ($port) {	# если не указан порт, берем порт по умолчанию (в соответствии протоколу)
 		$port = $prot eq 'http' ? $def{port_http} : $def{port_https};
 	}
 	$params = $5;				# все остальные параметры url
 	$url = "$prot://$domain:$port/$params";	# формируем нужный формат url
 	my $ip = gethostbyname $domain;		# получаем ip (для распознования домена)
 	my $inet_ip = ''; $inet_ip = inet_ntoa($ip) if $ip;
-	# debug - отладочное (URL)
-	if ($debug) {
-		print "\x1b[32m"."prot   - \x1b[31m". $prot ."\x1b[0m"."\n"; 	#p $prot;
-		print "\x1b[32m"."domain - \x1b[34m". $domain ."\x1b[0m"."\n"; 	#p $domain;
-		print "\x1b[32m"."port   - \x1b[31m". $port ."\x1b[0m"."\n"; 	#p $port;
-		print "\x1b[32m"."url    - \x1b[34m". $url ."\x1b[0m"."\n"; 	#p $url;
-		print "\x1b[32m"."params - \x1b[31m". $params ."\x1b[0m"."\n"; 	#p $params;
-		if ($ip) {
-			print "\x1b[32m"."ip     - \x1b[34m". $ip ."\x1b[0m"."\n"; 	#p $ip;
-			print "\x1b[32m"."dig ip - \x1b[31m". $inet_ip ."\x1b[0m"."\n";
-		}
-	}
 
 	# если удалось получить ip (распознать доменное имя)
 	if (defined $ip) {
-		$cv->begin;	# begin
-		http_request
-			HEAD => $url,
-			timeout => 1,
-			sub {
-				my ($body, $hdr) = @_;
-				### схожее с выводом в wget
-				if ($out_like_wget) {	# если нужно видеть вывод как в wget
-					# проверяем является ли валидным ip
-					my $valid = 1;	# не является валидным ip
-					if ($domain =~ /^(\d{1,3}).(\d{1,3}).(\d{1,3}).(\d{1,3})$/) {
-						$valid = 0;	# является валидным ip
-						$valid = 1 if ($1 > 255 or $2 > 255 or $3 > 255 or $4 > 255);	# не валидный ip
-					}
-					print "--2017-11-16 15:16:18-- $url\n";
-					my $valid_out = 0;
-					if ($valid and not exists $rec{$domain}) {
-						# выводится в wget когда параметр доменное имя, которое не было распознанно ранее
-						$rec{$domain} = $inet_ip;
-						print "Распознаётся $domain ($domain)... ";
-						$valid_out = 1;
-					}
-					print "$inet_ip\n" if ($valid_out); # дополняем предыдущую строку выводом ip распознаного домена
-					print "Подключение к $domain"." ($domain)|$inet_ip|"x$valid.":$port... ";
-					print "соединение установлено\n";
-					print "HTTP-запрос отправлен. Ожидание ответа... ";
-				}
-				###
+		my $host = URI->new($url)->host;
+		my @queue = ($url);
+		my %seen;			# для текущего хоста -> просмотрено{STATUS} вложенность{CURLVL} каталог{FOLDER}
+		# определяем каалог для загрузки
+		my $curCat = $ENV{PWD};	# без рекурсии
+		if (exists $param->{r}) { # c рекурсией
+			$curCat = "$ENV{PWD}/$domain 2";
+			mkdir $curCat unless (-e "$curCat");	# если каталога нет, создадим
+			# Заодно закинем в поиск robots.txt
+			push @queue, $url."robots.txt";
+			$seen{$url."robots.txt"}{CURLVL} = $param->{l};
+			$seen{$url."robots.txt"}{PATH} = "";
+			$seen{$url."robots.txt"}{FILE} = "/robots.txt";
+			#$seen{$url."robots.txt"}{CURCAT} = "$curCat";
+		}
+		$seen{$url}{CURLVL} = 0;	# текущий уровень вложенности
+		$seen{$url}{PATH} = "";
+		$seen{$url}{FILE} = "";
+		#$seen{$url}{CURCAT} = "$curCat";
+		my $ACTIVE = 0;		# активно для текущего хоста
 
-				if ($hdr->{Status} == 200) {
-					# получен ответ
-					say "Success: ".length $body;
-				} else {
-					# иначе неудача
-					say "Fail: @$hdr{qw(Status Reason)}";
-				}
 
-				while (@queue) {
-					$next->();
-				}
-				print "\n";
-				$cv->end; # end
+		# перебираем URI ... из Queue
+		my $next; $next = sub {
+			my $uri = shift @queue or return;
+
+			# при зарузке robots.txt ( как в wget )
+			if ($uri eq ($url."robots.txt")) {
+				print "Загрузка robots.txt; не обращайте внимания на ошибки.\n";
 			}
-		;
+			print "[$ACTIVE:$LIMIT] Начало загрузки $uri (".(0+@queue).")\n";
+			$ACTIVE++;
+
+			$cv->begin;	# begin
+
+			# HEAD запрос
+			http_request
+				HEAD => $uri,
+				timeout => 50,
+				sub {
+					my ($body, $hdr) = @_;
+
+					# получен положительный ответ
+					if ($hdr->{Status} == 200) {
+						# GET запрос
+						http_request
+							GET => $uri,
+							timeout => 50,
+							sub {
+								my ($body,$hdr) = @_;
+
+								# обрабатываем опцию -S
+								if (exists $param->{S}) {
+									print "  HTTP/".$hdr->{HTTPVersion}." $hdr->{Status} $hdr->{Reason}\n";
+									foreach (qw /date server content-length content-type cache-control expires
+											last-modified content-security-policy p3p set-cookie x-frame-options
+											x-xss-protection x-content-type-options keep-alive connection/) {
+										print "  $_: $hdr->{$_}\n" if exists $hdr->{$_};
+									}
+								}
+
+								# записываем ответ в файл
+								my $fh;
+								my $fullname = "$curCat"."$seen{$uri}{PATH}"."/index.html";
+								make_path ($curCat."$seen{$uri}{PATH}") unless (-e "$curCat"."$seen{$uri}{PATH}");	# если каталога нет, создадим
+								unless ($seen{$uri}{FILE}) {
+									# 1 - мы повторно вызвались скачивать
+									open ($fh, '>', $fullname) or die "$!";
+								}
+								else {
+									# 2 - мы скачиваем не основную страницу
+									$fullname = "$curCat"."$seen{$uri}{PATH}"."$seen{$uri}{FILE}";
+									open ($fh, '>', $fullname) or die "$!";
+								}
+								syswrite $fh, $body;
+								print "Cохранено в каталог: ««$fullname»»\n";
+								close $fh;
+
+								print "Загрузка завершена $uri: $hdr->{Status}\n\n";
+								$ACTIVE--;
+								# взятие следующих URI
+								$seen{$uri}{STATUS} = $hdr->{Status}; # запоминаем что эту ссылку мы уже скачали и её статус
+								#      если успешно        и при этом рекурсивно  и    глубина бесконечна    или не превышает запрошенной
+								if ($hdr->{Status} == 200 and exists $param->{r} and (not exists $param->{l} or $seen{$uri}{CURLVL} < $param->{l})) {
+									my @href = $body =~ m{(?:<a|<link)[^>]*href="([^"]+)"}sig;
+									#p @href;
+									for my $href (@href) {
+										my $new = URI->new_abs( $href, $hdr->{URL} );
+										next if $new !~ /^https?:/;		# проверяем протокол на http: или https:
+										next if $new->host ne $host;	# качать только с текущего хоста
+										$new =~ s/#.*//;	# отрезает из $new все что после "#"
+										next if exists $seen{$new};		# чтобы не качать повторно
+										$seen{$new}{CURLVL} = $seen{$uri}{CURLVL}+1;
+										push @queue, $new;
+
+										$new =~ "(https?)?:?(\/\/)?($domain)?:?($port)?(\/(.*))?\/([^\/]*)";
+										my $path = $6 ? "/$6" : "";
+										my $file = $7 ? "/$7" : "";
+										$seen{$new}{PATH} = "$path";
+										$seen{$new}{FILE} = "$file";
+									}
+								}
+
+								# если очередь URI не пуста и лимит не превышен запустить следующий запрос в обработку
+								while (@queue and $ACTIVE < $LIMIT) {
+									$next->();
+								}
+								$cv->end;
+							}
+						;
+					} else {
+						# если неудача на этоп этапе выведем соответсвующее сообщение
+						print "Fail: @$hdr{qw(Status Reason)}\n";
+						$ACTIVE--;
+						$next->();
+						$cv->end; # end
+					}
+				}
+			;
+		}; $next->();
+
+		while (@queueURL) {
+			$nextURL->();
+		}
+		$cv->end;
 	}
 	else {
 		# если не удалось получить ip (распознать доменное имя)
 		print "ошибка: Имя или служба не известны.\n";
 		print "wget: не удаётся разрешить адрес «$domain».\n";
+		$nextURL->();
+		$cv->end; # end
 	}
-
-}; $next->();
+}; $nextURL->() for 1..$param->{N};
 
 $cv->end; $cv->recv; # end
 
