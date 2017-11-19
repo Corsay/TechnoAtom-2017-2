@@ -59,6 +59,7 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 {
 	# обрабатываем ctrl+c по аналогии sh
 	local $SIG{INT} = 'IGNORE';
+	my $max_buff_size = 8191;
 
 	while( 1 ){
 		# выводим приглашение и считываем пользовательсукую команду
@@ -113,14 +114,15 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 					if (my $pidP = fork()) {
 						# первый дочерний
 						if ($num) {	# если команда не первая
-						close (IN_FROM_P);
+							close (IN_FROM_P);
 							print OUT_TO_C @childSTDOUT;	# передаем STDOUT предыдущей команды в следующую
 							close (OUT_TO_C);
 							@childSTDOUT = ();	# чистим чтобы не получить лишнего в выводе
 						}
 						close (OUT_TO_P);
-						while (<IN_FROM_C>) { 
+						while (<IN_FROM_C>) {
 							push @childSTDOUT, $_;	# Записываем результат команды в буфер
+							kill "TERM", $pidP if (@childSTDOUT > $max_buff_size); # убиваем процесс при переполнении им буфера
 							# далее это уйдет либо в вывод родителю, либо в следующую команду как STDIN
 						}
 						close (IN_FROM_C);
@@ -149,6 +151,7 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 							}
 						}
 					}
+
 				} # for 
 				print @childSTDOUT; # отправляем родителю накопленный STDOUT
 				exit; # завершаем дочерний процесс
