@@ -53,8 +53,6 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 	echo => { sub => \&echo, clearSTD => 1},
 	kill => { sub => \&shell_kill, clearSTD => 1},
 	ps => { sub => \&ps, clearSTD => 1},
-	fork => { sub => \&shell_exec, clearSTD => 1},
-	exec => { sub => \&shell_exec, clearSTD => 1},
 	$Exit => { sub => \&shell_exit, clearSTD => 0},
 );
 
@@ -101,6 +99,7 @@ my %commands = (	# хеш команд (команда, чистить ли STDO
 				waitpid($pid, 0);
 			} else {
 				die "Can't fork: $!" unless defined $pid;
+				local $SIG{INT} = 'DEFAULT';	# включаем ctrl+c по умолчанию на время выполнения дочернего процесса
 				# далее первый дочерний процесс
 				my @childSTDOUT;
 				# пока в @line есть команды
@@ -294,6 +293,7 @@ sub shell_exec {
 	}
 	# выполняем fork и exec
 	unless (my $pid  = fork()) {
+		local $SIG{INT} = 'DEFAULT';	# включаем ctrl+c по умолчанию на время выполнения exec команд
 		exec "$argv[0]";
 		exit;
 	}

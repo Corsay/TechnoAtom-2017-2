@@ -64,13 +64,13 @@ sub WriteToDestByPort {
 
 	my $pid;
 	if ($pid = fork()) {
-		# при завершении дочернего процесса закрываем STDIN 
+		# при завершении дочернего процесса закрываем STDIN
 		# при получении сигнала - этим - завершаем цикл while ( <STDIN> )
 		local $SIG{CHLD} = sub { close(STDIN); };
 
-		# в родительском читаем STDIN 
+		# в родительском читаем STDIN
 		while ( <STDIN> ) {
-			eval { print $socket $_ };
+			print $socket $_ or die "Can't write to socket: $!";
 		}
 	}
 	else {
@@ -78,7 +78,7 @@ sub WriteToDestByPort {
 		die "Cannot fork $!" unless defined $pid;
 		# в дочернем выводим ответы с сервера
 		while (<$socket>) {
-			my $message = $_; 
+			my $message = $_;
 			chomp($message);
 			print "$message\n" if $message;
 		}
@@ -93,6 +93,6 @@ sub WriteToDestByPort {
 	close ($socket);
 	# подождем пока дочерний процесс наверняка завершится
 	waitpid($pid, 0);
-} 
+}
 
 1;
