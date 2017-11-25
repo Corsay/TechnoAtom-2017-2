@@ -3,6 +3,8 @@ package Local::SocialNetwork;
 use strict;
 use warnings;
 
+use DBI;
+use DBD::SQLite;
 use JSON::XS;		# * Ответ приложения `bin/social_network.pl` должен быть в формате `JSON`
 
 use parent 'Local::Object';
@@ -29,7 +31,23 @@ our $VERSION = '1.00';
 sub init {
 	my ($self, $data) = @_;
 
+	my $driver   = "SQLite";
+	my $db_name = "users_relation.db";
+	my $dbd = "DBI:$driver:dbname=$db_name";
+	my $username = "";  # не ожидает логин и пароль
+	my $password = "";
+
+	# создаем и запоминаем соединение с БД
+	$self->{dbh} = DBI->connect($dbd, $username, $password, { RaiseError => 1 })
+  		or die "can not connect to DB '$db_name': ".$DBI::errstr;
+
     return;
+}
+
+# деструктор, при уничтожении объекта закрываем соединение с БД
+sub DESTROY {
+	my ($self) = @_;
+	$self->{dbh}->disconnect();
 }
 
 # Возможные возвращаемые значения:
@@ -56,11 +74,7 @@ sub friends {
 #  * Список пользователей, у которых нет друзей
 sub nofriends {
     my ($self) = @_;
-
-	# обработка
-	my $json = "nofriends";
-	print "$json\n";
-	my $djson = {'first_name' => 'Игорь', 'last_name' => 'Федотов', 'id' => 1};
+	my $djson = $self->{dbh}->selectall_arrayref("SELECT * FROM user where id == 49968", { Slice => {} });
 	return JSON::XS::encode_json([$djson]);
 }
 

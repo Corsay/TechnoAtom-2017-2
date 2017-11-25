@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use FindBin; use lib "$FindBin::Bin/../lib/";
+use FindBin; use lib "$FindBin::Bin/../lib";
 
 use Getopt::Long;	# парсить параметры
 use JSON::XS;		# * Ответ приложения `bin/social_network.pl` должен быть в формате `JSON`
