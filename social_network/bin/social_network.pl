@@ -8,7 +8,6 @@ use Getopt::Long;	# парсить параметры
 use JSON::XS;		# * Ответ приложения `bin/social_network.pl` должен быть в формате `JSON`
 
 use Local::SocialNetwork;
-use DDP;
 
 # -ru = -r -u
 # --ru = -ru
@@ -47,4 +46,8 @@ else {
 
 # в итоге работаем с JSON результатом
 my $json = JSON::XS::decode_json($answer);
-p $json;
+print "[\n";
+foreach (@$json) {
+	print "  { 'first_name': '$_->{first_name}', 'last_name': '$_->{last_name}', 'ID': $_->{ID} },\n";
+}
+print "]\n";

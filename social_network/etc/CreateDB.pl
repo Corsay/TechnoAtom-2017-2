@@ -23,38 +23,8 @@ my $dbh = DBI->connect($dbd, $username, $password, { RaiseError => 1 })
 $dbh->begin_work;	# Открытие транзакции
 
 # создание и заполнение таблиц
-my ($stmt, $ret, $zip, $sth, $fh);
-#---------------- USER
-# удаление таблицы
-$stmt = 'DROP TABLE IF EXISTS user';
-$ret = $dbh->do($stmt);
-die "Can not drop 'USER' table: ".$DBI::errstr if($ret < 0);
-# создание таблицы
-$stmt = qq(CREATE TABLE user (
-              ID 			int	PRIMARY KEY,
-              first_name	varchar	NOT NULL,
-              last_name		varchar	NOT NULL
-        ));
-$ret = $dbh->do($stmt);
-die "Can not create 'USER' table: ".$DBI::errstr if($ret < 0);
-# заполнение таблицы данными из zip архива
-$zip = Archive::Zip->new('user.zip');	# открываем архив
-$zip->extractMember('user');	# извлекаем файл из архива
-# читаем распакованный файл
-open ($fh, '<', 'user') or die "can't open file 'user': $!";
-$sth = $dbh->prepare(
-  "INSERT INTO user (id, first_name, last_name) VALUES (?, ?, ?);"
-);
-while (<$fh>) {
-  chomp(); # отрезаем
-  $_ =~ /(.*)\s(.*)\s(.*)/;
-  $sth->execute($1, $2, $3);  # вносим данные в таблицу 'USER'
-}
-close($fh);
-# удаляем распакованный файл
-unlink('user');
-
-
+my ($stmt, $ret, $zip, $sth, $fh);  # запрос, результат, обьект архива, prepare-execute, файл деск
+my %counter;  # тут будем держать количество друзей для каждого пользователя
 #---------------- USER_RELATION
 # удаление таблицы
 $stmt = 'DROP TABLE IF EXISTS user_relation';
@@ -78,11 +48,50 @@ $sth = $dbh->prepare(
 while (<$fh>) {
   chomp(); # отрезаем
   $_ =~ /(.*)\s(.*)/;
-  $sth->execute($1, $2);  # вносим данные в таблицу 'USER'  
+  $sth->execute($1, $2);  # вносим данные в таблицу 'USER'
+  # уведичиваем счётчики количества друзей
+  if (exists $counter{$1}) { $counter{$1}++; }
+  else { $counter{$1} = 1; }
+  if (exists $counter{$2}) { $counter{$2}++; }
+  else { $counter{$2} = 1; }
 }
 close($fh);
 # удаляем распакованный файл
 unlink('user_relation');
+
+
+#---------------- USER
+# удаление таблицы
+$stmt = 'DROP TABLE IF EXISTS user';
+$ret = $dbh->do($stmt);
+die "Can not drop 'USER' table: ".$DBI::errstr if($ret < 0);
+# создание таблицы
+$stmt = qq(CREATE TABLE user (
+              ID      int PRIMARY KEY,
+              first_name  varchar NOT NULL,
+              last_name   varchar NOT NULL,
+              friend_count  int  NOT NULL
+        ));
+$ret = $dbh->do($stmt);
+die "Can not create 'USER' table: ".$DBI::errstr if($ret < 0);
+# заполнение таблицы данными из zip архива
+$zip = Archive::Zip->new('user.zip'); # открываем архив
+$zip->extractMember('user');  # извлекаем файл из архива
+# читаем распакованный файл
+open ($fh, '<', 'user') or die "can't open file 'user': $!";
+$sth = $dbh->prepare(
+  "INSERT INTO user (id, first_name, last_name, friend_count) VALUES (?, ?, ?, ?);"
+);
+while (<$fh>) {
+  chomp(); # отрезаем
+  $_ =~ /(.*)\s(.*)\s(.*)/;
+  # если нет записи о количестве друзей для текущего пользователя, то считаем что их 0
+  my $count = $counter{$1} // 0;
+  $sth->execute($1, $2, $3, $count);  # вносим данные в таблицу 'USER'
+}
+close($fh);
+# удаляем распакованный файл
+unlink('user');
 
 
 $dbh->commit;	# Успешное завершение транзакции

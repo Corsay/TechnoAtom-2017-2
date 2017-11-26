@@ -64,18 +64,29 @@ sub friends {
 	return undef if ($from !~ /^\d+$/);
 	return undef if ($to !~ /^\d+$/);
 
-	# обработка
-	my $json = "friends";
-	print "$json\n";
-	my $djson = {'first_name' => 'Игорь', 'last_name' => 'Федотов', 'id' => 1};
-	return JSON::XS::encode_json([$djson]);
+	# получение id друзей для каждого из пользователей
+	my $from_fr = _get_friends($self, $from);
+	my $to_fr = _get_friends($self, $to);
+
+	my %from_fr = map { $_[0] => 0 } @$from_fr; 	# перевод первого массива в хэш
+	my @combined = grep { exists $from_fr{$_[0]} } @$to_fr;	# слияние массивов
+	my @rez = map { $_->[0] } @combined;			# разворот ссылочности полученного массива
+
+	my $select = "SELECT ID, first_name, last_name FROM user WHERE ID IN (".(join ",", @rez).")";
+	my $json = $self->{dbh}->selectall_arrayref($select, { Slice => {} });
+	return JSON::XS::encode_json($json);
 }
 
 #  * Список пользователей, у которых нет друзей
 sub nofriends {
     my ($self) = @_;
-	my $djson = $self->{dbh}->selectall_arrayref("SELECT * FROM user where id == 49968", { Slice => {} });
-	return JSON::XS::encode_json([$djson]);
+    my $select = qq(
+    	SELECT ID, first_name, last_name 
+    		FROM user 
+    		WHERE friend_count == 0
+    );
+	my $json = $self->{dbh}->selectall_arrayref($select, { Slice => {} });
+	return JSON::XS::encode_json($json);
 }
 
 # * Количество рукопожатий между двумя заданными пользователями.
@@ -94,6 +105,16 @@ sub num_handshakes {
 	print "$json\n";
 	my $djson = "-1";
 	return JSON::XS::encode_json([$djson]);
+}
+
+# получение id всех друзей для конкретного пользователя
+sub _get_friends {
+	my ($self, $id) = @_;
+	my $select = "SELECT friend_id FROM user_relation WHERE user_id == $id";
+	my $friends = $self->{dbh}->selectall_arrayref($select);
+	$select = "SELECT user_id FROM user_relation WHERE friend_id == $id";
+	$friends = \(@{ $friends }, @{ $self->{dbh}->selectall_arrayref($select) });
+	return $friends;
 }
 
 1;
