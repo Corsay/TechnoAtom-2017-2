@@ -12,12 +12,20 @@ use File::Path qw/make_path/;
 use Getopt::Long;
 use Pod::Usage;
 
-use 5.016;
-use DDP;
-
 =head1 NAME
 
+  wget.pm - assync text/html files loader
+
 =head1 SYNOPSIS
+
+  perl wget.pm [options] URLS ...
+
+  Options:
+    -N - count of parralel queryes
+    -r - recursive load
+    -l - depth of recursive load (0 = INF)
+    -L - only relative links
+    -S - show server responce
 
 =cut
 
@@ -55,18 +63,19 @@ pod2usage(-exitval => 0, -verbose => 2) if $param->{man};
 
 # проверяем остальные параметры
 $param->{N} = 1 if (not exists $param->{N} or $param->{N} == 0);	# если параметр N не задан или равен 0
+$param->{N} = 100 if ($param->{N} > 100);
 # если параметр l = 0 то это бесконечная глубина и просто удалим ключ -l
 delete $param->{l} if (exists $param->{l} and $param->{l} == 0);
 
 # перебираем URL ... из ARGV
 $AnyEvent::HTTP::MAX_PER_HOST = my $LIMIT = 100;
 
-# Перебираем URL ... из queueURL
+# Запоминаем URL из @ARGV в @queueURL
 my @queueURL = @ARGV;
 
 my $cv = AE::cv; $cv->begin; # begin
 
-# перебираем URI ... из Queue
+# перебираем URL ... из QueueURL
 my $nextURL; $nextURL = sub {
 	my $url = shift @queueURL or return;
 
@@ -96,30 +105,18 @@ my $nextURL; $nextURL = sub {
 		# определяем каалог для загрузки
 		my $curCat = $ENV{PWD};	# без рекурсии
 		if (exists $param->{r}) { # c рекурсией
-			$curCat = "$ENV{PWD}/$domain 2";
+			$curCat = "$ENV{PWD}/$domain";
 			mkdir $curCat unless (-e "$curCat");	# если каталога нет, создадим
-			# Заодно закинем в поиск robots.txt
-			push @queue, $url."robots.txt";
-			$seen{$url."robots.txt"}{CURLVL} = $param->{l};
-			$seen{$url."robots.txt"}{PATH} = "";
-			$seen{$url."robots.txt"}{FILE} = "/robots.txt";
-			#$seen{$url."robots.txt"}{CURCAT} = "$curCat";
 		}
 		$seen{$url}{CURLVL} = 0;	# текущий уровень вложенности
 		$seen{$url}{PATH} = "";
-		$seen{$url}{FILE} = "";
-		#$seen{$url}{CURCAT} = "$curCat";
+		$seen{$url}{FILE} = "/index.html";
 		my $ACTIVE = 0;		# активно для текущего хоста
-
 
 		# перебираем URI ... из Queue
 		my $next; $next = sub {
 			my $uri = shift @queue or return;
 
-			# при зарузке robots.txt ( как в wget )
-			if ($uri eq ($url."robots.txt")) {
-				print "Загрузка robots.txt; не обращайте внимания на ошибки.\n";
-			}
 			print "[$ACTIVE:$LIMIT] Начало загрузки $uri (".(0+@queue).")\n";
 			$ACTIVE++;
 
@@ -128,16 +125,14 @@ my $nextURL; $nextURL = sub {
 			# HEAD запрос
 			http_request
 				HEAD => $uri,
-				timeout => 50,
 				sub {
 					my ($body, $hdr) = @_;
 
 					# получен положительный ответ
-					if ($hdr->{Status} == 200) {
+					if ($hdr->{Status} == 200 and $hdr->{'content-type'} =~ /^text\/html.*/ ) {
 						# GET запрос
 						http_request
 							GET => $uri,
-							timeout => 50,
 							sub {
 								my ($body,$hdr) = @_;
 
@@ -151,34 +146,34 @@ my $nextURL; $nextURL = sub {
 									}
 								}
 
-								# записываем ответ в файл
-								my $fh;
-								my $fullname = "$curCat"."$seen{$uri}{PATH}"."/index.html";
-								make_path ($curCat."$seen{$uri}{PATH}") unless (-e "$curCat"."$seen{$uri}{PATH}");	# если каталога нет, создадим
-								unless ($seen{$uri}{FILE}) {
-									# 1 - мы повторно вызвались скачивать
-									open ($fh, '>', $fullname) or die "$!";
-								}
-								else {
-									# 2 - мы скачиваем не основную страницу
-									$fullname = "$curCat"."$seen{$uri}{PATH}"."$seen{$uri}{FILE}";
-									open ($fh, '>', $fullname) or die "$!";
-								}
-								syswrite $fh, $body;
-								print "Cохранено в каталог: ««$fullname»»\n";
-								close $fh;
-
 								print "Загрузка завершена $uri: $hdr->{Status}\n\n";
 								$ACTIVE--;
 								# взятие следующих URI
 								$seen{$uri}{STATUS} = $hdr->{Status}; # запоминаем что эту ссылку мы уже скачали и её статус
+
+								# записываем ответ в файл
+								make_path ($curCat."$seen{$uri}{PATH}") unless (-e "$curCat"."$seen{$uri}{PATH}");	# если каталога нет, создадим
+								my $fullname = "$curCat"."$seen{$uri}{PATH}"."$seen{$uri}{FILE}";
+								open (my $fh, '>', $fullname) or do {
+									print "Нет возможности открыть файл для записи: $!$/";
+									$cv->end;
+									return;
+								};
+								syswrite $fh, $body;
+								print "Cохранено в каталог: ««$fullname»»\n";
+								close $fh;
+
 								#      если успешно        и при этом рекурсивно  и    глубина бесконечна    или не превышает запрошенной
 								if ($hdr->{Status} == 200 and exists $param->{r} and (not exists $param->{l} or $seen{$uri}{CURLVL} < $param->{l})) {
 									my @href = $body =~ m{(?:<a|<link)[^>]*href="([^"]+)"}sig;
-									#p @href;
 									for my $href (@href) {
 										my $new = URI->new_abs( $href, $hdr->{URL} );
-										next if $new !~ /^https?:/;		# проверяем протокол на http: или https:
+										if (exists $param->{L}) {
+											next if $new =~ /^https?:/;		# если только по относительным ссылкам
+										}
+										else {
+											next if $new !~ /^https?:/;		# проверяем протокол на http: или https:
+										}
 										next if $new->host ne $host;	# качать только с текущего хоста
 										$new =~ s/#.*//;	# отрезает из $new все что после "#"
 										next if exists $seen{$new};		# чтобы не качать повторно
@@ -187,7 +182,7 @@ my $nextURL; $nextURL = sub {
 
 										$new =~ "(https?)?:?(\/\/)?($domain)?:?($port)?(\/(.*))?\/([^\/]*)";
 										my $path = $6 ? "/$6" : "";
-										my $file = $7 ? "/$7" : "";
+										my $file = $7 ? "/$7" : "/index.html";
 										$seen{$new}{PATH} = "$path";
 										$seen{$new}{FILE} = "$file";
 									}
@@ -202,7 +197,7 @@ my $nextURL; $nextURL = sub {
 						;
 					} else {
 						# если неудача на этоп этапе выведем соответсвующее сообщение
-						print "Fail: @$hdr{qw(Status Reason)}\n";
+						print "Skipped: $uri: @$hdr{qw(Status Reason)}\n";
 						$ACTIVE--;
 						$next->();
 						$cv->end; # end
