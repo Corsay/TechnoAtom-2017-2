@@ -48,6 +48,11 @@ else {
 my $json = JSON::XS::decode_json($answer);
 print "[\n";
 foreach (@$json) {
-	print "  { 'first_name': '$_->{first_name}', 'last_name': '$_->{last_name}', 'ID': $_->{ID} },\n";
+	if ($ARGV[0] eq 'num_handshakes') {
+		print "  num_handshakes = $_->{num_handshakes}\n";
+	}
+	else {
+		print "  { 'first_name': '$_->{first_name}', 'last_name': '$_->{last_name}', 'ID': $_->{ID} },\n";
+	}
 }
 print "]\n";

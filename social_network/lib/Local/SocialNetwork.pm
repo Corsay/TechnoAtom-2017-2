@@ -2,6 +2,7 @@ package Local::SocialNetwork;
 
 use strict;
 use warnings;
+use experimental 'smartmatch';	# for smartmatch ~~
 
 use DBI;
 use DBD::SQLite;
@@ -68,8 +69,8 @@ sub friends {
 	my $from_fr = _get_friends($self, $from);
 	my $to_fr = _get_friends($self, $to);
 
-	my %from_fr = map { $_[0] => 0 } @$from_fr; 	# перевод первого массива в хэш
-	my @combined = grep { exists $from_fr{$_[0]} } @$to_fr;	# слияние массивов
+	my %from_fr = map { $_->[0] => 0 } @$from_fr; 	# перевод первого массива в хэш
+	my @combined = grep { exists $from_fr{$_->[0]}; } @{$to_fr};	# слияние массивов
 	my @rez = map { $_->[0] } @combined;			# разворот ссылочности полученного массива
 
 	my $select = "SELECT ID, first_name, last_name FROM user WHERE ID IN (".(join ",", @rez).")";
@@ -100,21 +101,56 @@ sub num_handshakes {
 	return undef if ($from !~ /^\d+$/);
 	return undef if ($to !~ /^\d+$/);
 
-	# обработка
-	my $json = "num_handshakes";
-	print "$json\n";
-	my $djson = "-1";
-	return JSON::XS::encode_json([$djson]);
+	# проверяем что у пользователя есть хотябы один друг
+	if (_get_friend_count($self, $to)) {
+		my %viewed_users;			# просмотренные пользователи
+		my $handshakes = 0;			# количество рукопожатий
+		my @search = ($from);		# массив в котором будем хранить список друзей на уровне
+
+		# пока есть хоть один возможный претендент имеющий в друзьях искомого пользователя
+		while (@search) {
+			#   если id есть в массиве, то вернем количество рукопожатий
+			if ($to ~~ @search) {
+				return JSON::XS::encode_json([{num_handshakes => $handshakes}]);
+			}
+			# если не нашли забираем всех друзей текущих пользователей в новый список
+			my @search_tmp = @{ _get_friends($self, @search) };
+			@search = ();	# обнуляем массив
+			# перезаполняем массив теми пользователями которых еще не проверили
+			foreach (@search_tmp) {
+				$_ = $_->[0];
+				unless (exists $viewed_users{$_}) {
+					$viewed_users{$_} = 1;
+					push @search, $_;
+				}
+			}
+			# инкремент количества рукопожатий
+			$handshakes++;
+		}
+	}
+	# если совсем нет друзей
+	return JSON::XS::encode_json([{num_handshakes => -1}]);
+}
+
+# получение количества друзей у выбранного пользователя
+sub _get_friend_count {
+	my ($self, $id) = @_;
+	my $select = "SELECT friend_count FROM user WHERE ID == $id";
+	my $friends_count = $self->{dbh}->selectall_arrayref($select);
+	return $friends_count->[0]->[0];
 }
 
 # получение id всех друзей для конкретного пользователя
 sub _get_friends {
-	my ($self, $id) = @_;
-	my $select = "SELECT friend_id FROM user_relation WHERE user_id == $id";
-	my $friends = $self->{dbh}->selectall_arrayref($select);
-	$select = "SELECT user_id FROM user_relation WHERE friend_id == $id";
-	$friends = \(@{ $friends }, @{ $self->{dbh}->selectall_arrayref($select) });
-	return $friends;
+	my ($self, @id) = @_;
+	my @friends; my $friend;
+	my %get = (0 => 'friend_id', 1 => 'user_id');
+	for my $i (0..1) { # формируем нужный селект запрос и забираем данные
+		my $select = "SELECT ".$get{$i}." FROM user_relation WHERE ".$get{1 - $i}." IN (".(join ",", @id).")";
+		$friend = $self->{dbh}->selectall_arrayref($select);
+		push @friends, $_ foreach (@$friend);
+	}
+	return \@friends;
 }
 
 1;
