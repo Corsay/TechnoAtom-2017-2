@@ -37,7 +37,8 @@ pod2usage(-exitval => 0, -verbose => 2) if $param->{man};
 
 my $cv = AE::cv; $cv->begin;
 
-my ($reader_from_STDIN);
+$|++;	# autoflush на STDOUT
+my ($reader_from_STDIN, $writer_to_STDOUT);
 
 my $telnet; $telnet = sub {
 	my ($param) = @_;
@@ -61,16 +62,16 @@ my $telnet; $telnet = sub {
 					$cv->end;
 				},
 				on_read => sub {
-					print $h->rbuf();	# печатаем ответ сервера
-					$h->{rbuf} = '';	# чистим буфер
+					$writer_to_STDOUT = AE::io *STDOUT, 1, sub {	# ждет пока STDOUT станет доступен для записи
+						print $h->rbuf();	# выводит содержимое буфера
+						$h->{rbuf} = '';	# чистит буфер
+					}
 				},
 			);
 
-			$reader_from_STDIN = AE::io \*STDIN, 0, sub {	# ждет пока STDIN станет читаемым
+			$reader_from_STDIN = AE::io *STDIN, 0, sub {	# ждет пока STDIN станет читаемым
 				my $line = <STDIN>;	# забираем запрос из ввода пользователя
-				if ($h) {
-					$h->push_write($line);	# отдаем запрос серверу
-				}
+				$h->push_write($line);	# отдаем запрос серверу
 			};
 		}
 		else {

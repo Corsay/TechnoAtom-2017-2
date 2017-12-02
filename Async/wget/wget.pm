@@ -94,130 +94,121 @@ my $nextURL; $nextURL = sub {
 	}
 	$params = $5;				# все остальные параметры url
 	$url = "$prot://$domain:$port/$params";	# формируем нужный формат url
-	my $ip = gethostbyname $domain;		# получаем ip (для распознования домена)
-	my $inet_ip = ''; $inet_ip = inet_ntoa($ip) if $ip;
 
-	# если удалось получить ip (распознать доменное имя)
-	if (defined $ip) {
-		my $host = URI->new($url)->host;
-		my @queue = ($url);
-		my %seen;			# для текущего хоста -> просмотрено{STATUS} вложенность{CURLVL} каталог{FOLDER}
-		# определяем каалог для загрузки
-		my $curCat = $ENV{PWD};	# без рекурсии
-		if (exists $param->{r}) { # c рекурсией
-			$curCat = "$ENV{PWD}/$domain";
-			mkdir $curCat unless (-e "$curCat");	# если каталога нет, создадим
-		}
-		$seen{$url}{CURLVL} = 0;	# текущий уровень вложенности
-		$seen{$url}{PATH} = "";
-		$seen{$url}{FILE} = "/index.html";
-		my $ACTIVE = 0;		# активно для текущего хоста
+	my $host = URI->new($url)->host;
+	my @queue = ($url);
+	my %seen;			# для текущего хоста -> просмотрено{STATUS} вложенность{CURLVL} каталог{FOLDER}
+	# определяем каалог для загрузки
+	my $curCat = $ENV{PWD};	# без рекурсии
+	if (exists $param->{r}) { # c рекурсией
+		$curCat = "$ENV{PWD}/$domain";
+		mkdir $curCat unless (-e "$curCat");	# если каталога нет, создадим
+	}
+	$seen{$url}{CURLVL} = 0;	# текущий уровень вложенности
+	$seen{$url}{PATH} = "";
+	$seen{$url}{FILE} = "/index.html";
+	my $ACTIVE = 0;		# активно для текущего хоста
 
-		# перебираем URI ... из Queue
-		my $next; $next = sub {
-			my $uri = shift @queue or return;
+	# перебираем URI ... из Queue
+	my $next; $next = sub {
+		my $uri = shift @queue or return;
+		print "[$ACTIVE:$LIMIT] Начало загрузки $uri (".(0+@queue).")\n";
+		$ACTIVE++;
 
-			print "[$ACTIVE:$LIMIT] Начало загрузки $uri (".(0+@queue).")\n";
-			$ACTIVE++;
+		$cv->begin;	# begin
 
-			$cv->begin;	# begin
+		#my $writer_to_FileHandler;
 
-			# HEAD запрос
-			http_request
-				HEAD => $uri,
-				sub {
-					my ($body, $hdr) = @_;
+		# HEAD запрос
+		http_request
+			HEAD => $uri,
+			sub {
+				my ($body, $hdr) = @_;
 
-					# получен положительный ответ
-					if ($hdr->{Status} == 200 and $hdr->{'content-type'} =~ /^text\/html.*/ ) {
-						# GET запрос
-						http_request
-							GET => $uri,
-							sub {
-								my ($body,$hdr) = @_;
+				# получен положительный ответ
+				if ($hdr->{Status} == 200 and $hdr->{'content-type'} =~ /^text\/html.*/ ) {
+					# GET запрос
+					http_request
+						GET => $uri,
+						sub {
+							my ($body,$hdr) = @_;
 
-								# обрабатываем опцию -S
-								if (exists $param->{S}) {
-									print "  HTTP/".$hdr->{HTTPVersion}." $hdr->{Status} $hdr->{Reason}\n";
-									foreach (qw /date server content-length content-type cache-control expires
-											last-modified content-security-policy p3p set-cookie x-frame-options
-											x-xss-protection x-content-type-options keep-alive connection/) {
-										print "  $_: $hdr->{$_}\n" if exists $hdr->{$_};
-									}
+							# обрабатываем опцию -S
+							if (exists $param->{S}) {
+								print "  HTTP/".$hdr->{HTTPVersion}." $hdr->{Status} $hdr->{Reason}\n";
+								foreach (qw /date server content-length content-type cache-control expires
+										last-modified content-security-policy p3p set-cookie x-frame-options
+										x-xss-protection x-content-type-options keep-alive connection/) {
+									print "  $_: $hdr->{$_}\n" if exists $hdr->{$_};
 								}
-
-								print "Загрузка завершена $uri: $hdr->{Status}\n\n";
-								$ACTIVE--;
-								# взятие следующих URI
-								$seen{$uri}{STATUS} = $hdr->{Status}; # запоминаем что эту ссылку мы уже скачали и её статус
-
-								# записываем ответ в файл
-								make_path ($curCat."$seen{$uri}{PATH}") unless (-e "$curCat"."$seen{$uri}{PATH}");	# если каталога нет, создадим
-								my $fullname = "$curCat"."$seen{$uri}{PATH}"."$seen{$uri}{FILE}";
-								open (my $fh, '>', $fullname) or do {
-									print "Нет возможности открыть файл для записи: $!$/";
-									$cv->end;
-									return;
-								};
-								syswrite $fh, $body;
-								print "Cохранено в каталог: ««$fullname»»\n";
-								close $fh;
-
-								#      если успешно        и при этом рекурсивно  и    глубина бесконечна    или не превышает запрошенной
-								if ($hdr->{Status} == 200 and exists $param->{r} and (not exists $param->{l} or $seen{$uri}{CURLVL} < $param->{l})) {
-									my @href = $body =~ m{(?:<a|<link)[^>]*href="([^"]+)"}sig;
-									for my $href (@href) {
-										my $new = URI->new_abs( $href, $hdr->{URL} );
-										if (exists $param->{L}) {
-											next if $new =~ /^https?:/;		# если только по относительным ссылкам
-										}
-										else {
-											next if $new !~ /^https?:/;		# проверяем протокол на http: или https:
-										}
-										next if $new->host ne $host;	# качать только с текущего хоста
-										$new =~ s/#.*//;	# отрезает из $new все что после "#"
-										next if exists $seen{$new};		# чтобы не качать повторно
-										$seen{$new}{CURLVL} = $seen{$uri}{CURLVL}+1;
-										push @queue, $new;
-
-										$new =~ "(https?)?:?(\/\/)?($domain)?:?($port)?(\/(.*))?\/([^\/]*)";
-										my $path = $6 ? "/$6" : "";
-										my $file = $7 ? "/$7" : "/index.html";
-										$seen{$new}{PATH} = "$path";
-										$seen{$new}{FILE} = "$file";
-									}
-								}
-
-								# если очередь URI не пуста и лимит не превышен запустить следующий запрос в обработку
-								while (@queue and $ACTIVE < $LIMIT) {
-									$next->();
-								}
-								$cv->end;
 							}
-						;
-					} else {
-						# если неудача на этоп этапе выведем соответсвующее сообщение
-						print "Skipped: $uri: @$hdr{qw(Status Reason)}\n";
-						$ACTIVE--;
-						$next->();
-						$cv->end; # end
-					}
-				}
-			;
-		}; $next->();
 
-		while (@queueURL) {
-			$nextURL->();
-		}
-		$cv->end;
-	}
-	else {
-		# если не удалось получить ip (распознать доменное имя)
-		print "ошибка: Имя или служба не известны.\n";
-		print "wget: не удаётся разрешить адрес «$domain».\n";
+							print "Загрузка завершена $uri: $hdr->{Status}\n\n";
+							$ACTIVE--;
+							# взятие следующих URI
+							$seen{$uri}{STATUS} = $hdr->{Status}; # запоминаем что эту ссылку мы уже скачали и её статус
+
+							# записываем ответ в файл
+							make_path ($curCat."$seen{$uri}{PATH}") unless (-e "$curCat"."$seen{$uri}{PATH}");	# если каталога нет, создадим
+							my $fullname = "$curCat"."$seen{$uri}{PATH}"."$seen{$uri}{FILE}";
+							open (my $fh, '>', $fullname) or do {
+								print "Нет возможности открыть файл для записи: $!$/";
+								$cv->end;
+								return;
+							};
+							#$writer_to_FileHandler = AE::io $fh, 1, sub {	# ждет пока в $fh удастся писать
+								syswrite $fh, $body;
+							#};
+							print "Cохранено в каталог: ««$fullname»»\n";
+							close $fh;
+
+							#      если успешно        и при этом рекурсивно  и    глубина бесконечна    или не превышает запрошенной
+							if ($hdr->{Status} == 200 and exists $param->{r} and (not exists $param->{l} or $seen{$uri}{CURLVL} < $param->{l})) {
+								my @href = $body =~ m{(?:<a|<link)[^>]*href="([^"]+)"}sig;
+								for my $href (@href) {
+									my $new = URI->new_abs( $href, $hdr->{URL} );
+									if (exists $param->{L}) {
+										next if $new =~ /^https?:/;		# если только по относительным ссылкам
+									}
+									else {
+										next if $new !~ /^https?:/;		# проверяем протокол на http: или https:
+									}
+									next if $new->host ne $host;	# качать только с текущего хоста
+									$new =~ s/#.*//;	# отрезает из $new все что после "#"
+									next if exists $seen{$new};		# чтобы не качать повторно
+									$seen{$new}{CURLVL} = $seen{$uri}{CURLVL}+1;
+									push @queue, $new;
+
+									$new =~ "(https?)?:?(\/\/)?($domain)?:?($port)?(\/(.*))?\/([^\/]*)";
+									my $path = $6 ? "/$6" : "";
+									my $file = $7 ? "/$7" : "/index.html";
+									$seen{$new}{PATH} = "$path";
+									$seen{$new}{FILE} = "$file";
+								}
+							}
+
+							# если очередь URI не пуста и лимит не превышен запустить следующий запрос в обработку
+							while (@queue and $ACTIVE < $LIMIT) {
+								$next->();
+							}
+							$cv->end;
+						}
+					;
+				} else {
+					# если неудача на этоп этапе выведем соответсвующее сообщение
+					print "Skipped: $uri: @$hdr{qw(Status Reason)}\n";
+					$ACTIVE--;
+					$next->();
+					$cv->end; # end
+				}
+			}
+		;
+	}; $next->();
+
+	while (@queueURL) {
 		$nextURL->();
-		$cv->end; # end
 	}
+	$cv->end;
 }; $nextURL->() for 1..$param->{N};
 
 $cv->end; $cv->recv; # end
