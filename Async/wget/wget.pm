@@ -117,8 +117,6 @@ my $nextURL; $nextURL = sub {
 
 		$cv->begin;	# begin
 
-		#my $writer_to_FileHandler;
-
 		# HEAD запрос
 		http_request
 			HEAD => $uri,
@@ -156,9 +154,11 @@ my $nextURL; $nextURL = sub {
 								$cv->end;
 								return;
 							};
-							#$writer_to_FileHandler = AE::io $fh, 1, sub {	# ждет пока в $fh удастся писать
-								syswrite $fh, $body;
-							#};
+							syswrite $fh, $body or do {
+								print "Нет возможности сохранить в данный файл: $!$/";
+								$cv->end;
+								return;
+							};
 							print "Cохранено в каталог: ««$fullname»»\n";
 							close $fh;
 
