@@ -5,6 +5,7 @@ use warnings;
 use DBI;
 use DBD::mysql;
 
+my $upload_dir = 'note';
 # конфиг "для создания" mysql бд
 my $driver   = "mysql";
 my $dbname = "TCnotes";
@@ -81,3 +82,6 @@ eval {
   $dbh->commit; # Успешное завершение транзакции
 };
 $dbh->disconnect(); # завершение работы с БД
+
+# создаем директорию для заметок
+mkdir "$dbname/$upload_dir" unless (-e "$dbname/$upload_dir");

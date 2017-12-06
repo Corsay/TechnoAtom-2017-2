@@ -19,6 +19,26 @@ sub delete_entry {	# получает на вход $id, удаляем запи
 	unlink get_upload_dir . $id if (-e get_upload_dir . $id);
 }
 
+# страница со ссылками на заметки текущего пользователя
+get '/MyNotes' => sub {
+
+	# ToDo доделать
+
+	# забираем из бд только валидные заметки для текущего пользователя
+	my $MyNotes = database->selectall_arrayref(
+		'SELECT cast(id as unsigned) as id, create_time, title FROM note where (expire_time is null or expire_time > current_timestamp) order by create_time desc limit 10;',
+		{ Slice => {} }
+	);
+	# форматируем данные из бд (XSS, Pack)
+	for (@$MyNotes) {
+		$_->{title} = encode_entities($_->{title}, '<>&"');	# борьба с xss
+		$_->{id} = unpack 'H*', pack 'Q', $_->{id};
+	}
+
+	return template 'my_note_show.tt' => {MyNotes => $MyNotes};
+};
+
+# просматриваемая заметка
 get qr{^/([a-f0-9]{16})$} => sub {
 	my ($id) = splat;
 	$id = unpack 'Q', pack 'H*', $id;	# распаковываем id из 16-ного числа
@@ -59,10 +79,12 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	};
 };
 
+# главная страница
 get '/' => sub {
     template 'index';
 };
 
+# главная страница, создание заметки
 post '/' => sub {
 	my $text = params->{textnote};		# текст
 	my $title = params->{title}||'';	# заголовок(название)			(опционально)
@@ -81,7 +103,7 @@ post '/' => sub {
 	if (@err) {	# если хоть одна ошибка
 		$text = encode_entities($text, '<>&"');	# борьба с xss
 		$title = encode_entities($title, '<>&"');
-		return template 'index' => {text => $text, title => $title, expire => $expire, err => \@err};
+		return template 'index' => {text => $text, title => $title, expire => $expire, err => \@err};	# заполняем введенными пользователем данными форму
 	}
 
 	my $create_time = time();		# время создания (время прихода запроса на сервер)
@@ -113,11 +135,24 @@ post '/' => sub {
 	redirect '/' . unpack 'H*', pack 'Q', $id;	# пакуем и делаем redirect
 };
 
-# для отображения боковой менюшки с последними добавленными текстами
+# Выполняем перед загрузкой каждого шаблона
 hook before_template_render => sub {
 	my $tokens = shift;	# хеш переменных переданных шаблону перед которым вызывается hook before_template_render
+
 	# Добавим PageTitle
 	$tokens->{PageTitle} = 'TCnotes';
+
+	# Заполняем ExpireMas (для Select) (для шаблона index.tt)
+	my $ExpireMas = [
+		{ value => 0, text => 'Never' },
+		{ value => 600, text => '10 min' },
+		{ value => 3600, text => '1 hour' },
+		{ value => 86400, text => '1 day' },
+		{ value => 604800, text => '1 week' },
+		{ value => 31536000, text => '365 day' },
+	];
+	$tokens->{ExpireMas} = $ExpireMas;
+
 	# Добавим в него последние 10 добавленных записей
 	my $last_note = database->selectall_arrayref(
 		'SELECT cast(id as unsigned) as id, create_time, title FROM note where (expire_time is null or expire_time > current_timestamp) order by create_time desc limit 10;',

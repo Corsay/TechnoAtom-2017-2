@@ -28,6 +28,9 @@ input.post_input, select.post_select {
 a {
     color: #C03 !important;
     text-decoration: none;
+}
+
+a:not(.beyond-center) {
     background-color: #fff !important;
 }
 
@@ -103,6 +106,7 @@ textarea.note_text, textarea.note_textarea {
 }
 
 .content_title {
+    margin-top: 5px;
     border-bottom: 2px solid #ddd;
     color: #333;
     font-size: 1em;

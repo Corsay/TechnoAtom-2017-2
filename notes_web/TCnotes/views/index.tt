@@ -18,18 +18,15 @@
 		<textarea name="textnote" class="note_textarea" rows="15" style="overflow: hidden; word-wrap: break-word; resezi: none; width:400px; height: 400px;"><% text %></textarea>
 	</div>
 	<div class="content_title">Note settings</div>
-	<div class="form_frame_left" style="width:400px; min-width:400px;">
+	<div class="form_frame_left" style="width:450px; min-width:450px;">
 		<!-- expiration field -->
-		<div class="form_frame">		<!-- колонка -->
-			<div class="form_left">Note Expiration</div>	<!-- строка -->
+		<div class="form_frame">
+			<div class="form_left">Note Expiration</div>
 			<div class="form_right">
 			<select name="expire">
-				<option value="0" <% IF expire==0 %>selected="selected"<% END %>>Never</option>
-				<option value="600" <% IF expire==600 %>selected="selected"<% END %>>10 min</option>
-				<option value="3600" <% IF expire==3600 %>selected="selected"<% END %>>1 hour</option>
-				<option value="86400" <% IF expire==86400 %>selected="selected"<% END %>>1 day</option>
-				<option value="604800" <% IF expire==604800 %>selected="selected"<% END %>>1 week</option>
-				<option value="31536000" <% IF expire==31536000 %>selected="selected"<% END %>>365 day</option>
+				<% FOR e IN ExpireMas %>
+					<option value="<% e.value %>" <% IF expire==e.value %>selected="selected"<% END %>><% e.text %></option>
+				<% END %>
 			</select>
 			</div>
 		</div>

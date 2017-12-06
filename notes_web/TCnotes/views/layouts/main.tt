@@ -29,6 +29,9 @@
 						<% END %>
 					</ul>
 				</li>
+				<li>
+					<h3><a href="/MyNotes" class="beyond-center">My Notes</a></h3>
+				</li>
 			</ul>
 		</div>
 		<div id="content">
@@ -40,6 +43,6 @@
 			<div style="clear: both"></div>
 		</div>
 	</div>
-	<div id="footer">Powered by <a href="http://perldancer.org/">Dancer2</a> <% dancer_version %></div>
+	<div id="footer">Powered by <a href="http://perldancer.org/" class="beyond-center">Dancer2</a> <% dancer_version %></div>
 </body>
 </html>
