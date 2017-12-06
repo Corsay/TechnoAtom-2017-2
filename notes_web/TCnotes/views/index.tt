@@ -11,7 +11,7 @@
 
 <h3>New Note</h3>
 <form class="note_form" id="noteform" name="noteform" method="post" onsubmit="
-  document.getElementById('submit').disable=true; 
+  document.getElementById('submit').disable=true;
   document.getElementById('submit').value='Posting...';
 ">
 	<div class="textarea_note">
