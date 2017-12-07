@@ -40,5 +40,6 @@
 			<div class="form_left">&nbsp;</div>
 			<div class="form_right"><input type="submit" name="submit" value="New Note!" id="submit"></div>
 		</div>
+		<input type="hidden" name="csrf_token" value="<% csrf_token %>"/>
 	</div>
 </form>

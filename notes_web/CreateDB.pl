@@ -81,7 +81,7 @@ eval {
 
   $stmt = qq(CREATE TABLE user (
     login VARCHAR(50) PRIMARY KEY NOT NULL,
-    pass VARCHAR(50) NOT NULL,
+    pass VARCHAR(100) NOT NULL,
     name VARCHAR(100)
   ) charset utf8;);  $ret = $dbh->do($stmt);
 
@@ -103,9 +103,6 @@ eval {
     FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE,
     PRIMARY KEY (login, note_id)
   ) charset utf8;);  $ret = $dbh->do($stmt);
-
-  $stmt = qq(INSERT INTO user VALUES ('1','1','DC'););  $ret = $dbh->do($stmt);
-  $stmt = qq(INSERT INTO user VALUES ('2','2','RT'););  $ret = $dbh->do($stmt);
 
   $dbh->commit; # Успешное завершение транзакции
 };

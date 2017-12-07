@@ -2,7 +2,9 @@ package TCnotes;
 use utf8;
 use Dancer2;
 use Dancer2::Plugin::Database;
+use Dancer2::Plugin::CSRF;
 use Digest::CRC qw(crc64);
+use Digest::MD5 qw(md5_hex);
 use HTML::Entities;
 
 our $VERSION = '0.2';
@@ -37,7 +39,7 @@ get '/MyNotes' => sub {
 		$_->{id} = unpack 'H*', pack 'Q', $_->{id};
 	}
 
-	return template 'my_note_show.tt' => {MyNotes => $MyNotes};
+	return template 'my_note_show.tt' => {MyNotes => $MyNotes, csrf_token => get_csrf_token() };
 };
 
 # просматриваемая заметка (с проверкой разрешения (авторизацией))
@@ -51,14 +53,14 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	unless ($sth->execute($id)+0) {	# если select ничего не вернул (т.е. вернул "0E0")
 		unlink get_upload_dir . $id if (-e get_upload_dir . $id);	# удаляем файл (если в бд нет записи, не факт что вычищен и файл из папки)
 		response->status(404);	# возвращаем ответ 404 - не найдено
-		return template 'index' => {err => ['Note not found']};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
+		return template 'index' => {err => ['Note not found'], csrf_token => get_csrf_token()};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
 	}
 
 	# если у пользователя нет допуска к данной заметке
 	my $sth2 = database->prepare('SELECT login, cast(note_id as unsigned) as note_id FROM user_note where (login = ? and note_id = cast(? as signed));');
 	unless ($sth2->execute($owner, $id)+0) {	# если select ничего не вернул (т.е. вернул "0E0") (то считаем пользователя не авторизованным)
 		response->status(404);	# возвращаем ответ 404 - не найдено
-		return template 'index' => {err => ['Note not found']};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
+		return template 'index' => {err => ['Note not found'], csrf_token => get_csrf_token()};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
 	}
 
 	# если же запрос выполнился, пробуем получить эту запись
@@ -67,7 +69,7 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	if ($db_res->{expire_time} and $db_res->{expire_time} < time()) {	# если просрочено, то
 		delete_entry($id);	# удаляем запись
 		response->status(404);	# возвращаем ответ 404 - не найдено
-		return template 'index' => {err => ['Note expired']};
+		return template 'index' => {err => ['Note expired'], csrf_token => get_csrf_token()};
 	}
 
 	# читаем контент
@@ -75,7 +77,7 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	unless (open($fh, '<:utf8', get_upload_dir . $id)) {	# если не удалось открыть, но в базе есть запись, то
 		delete_entry($id);
 		response->status(404);	# возвращаем ответ 404 - не найдено
-		return template 'index' => {err => ['Note not found']};
+		return template 'index' => {err => ['Note not found'], csrf_token => get_csrf_token() };
 	}
 	my @text = <$fh>;
 	close($fh);
@@ -89,13 +91,14 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	}
 	return template 'note_show.tt' => {
 		id => $id, text => \@text, raw => join('', @text), create_time => $db_res->{create_time},
-		expire_time => $db_res->{expire_time}, title => $title
+		expire_time => $db_res->{expire_time}, title => $title,
+		csrf_token => get_csrf_token()
 	};
 };
 
 # главная страница
 get '/' => sub {
-    template 'index';
+    template 'index', { csrf_token => get_csrf_token() };
 };
 
 # главная страница, создание заметки
@@ -104,6 +107,8 @@ post '/' => sub {
 	my $text = params->{textnote};		# текст
 	my $title = params->{title}||'';	# заголовок(название)			(опционально)
 	my $expire = params->{expire};		# время жизни (0 = бесконечно)	(опционально)
+
+	# ToDo добавить пользователей которые могут читать заметку
 
 	my @err = ();
 	if (!$text) {	# пустой текст -> ошибка
@@ -148,6 +153,7 @@ post '/' => sub {
 		response->status(500);	# возвращаем ответ 500 - ошибка с нашей стороны
 		return template 'index' => {err => ['Internal server error']};
 	}
+
 	# ToDo добавить права на чтение перечисленным в списке пользователям
 
 	# попробуем открыть файл и записать в него данные(заметку)
@@ -164,7 +170,7 @@ post '/' => sub {
 # форма авторизации
 get '/login' => sub {
 	if (!session('user_login')) {
-		template 'login';
+		template 'login', { csrf_token => get_csrf_token() };
 	}
 	else {
 		redirect '/';	# если пользователь уже авторизован
@@ -175,19 +181,53 @@ get '/login' => sub {
 post '/login' => sub {
 	my $user_login = params->{user_login};				# логин пользователя
 	my $user_password = params->{user_password};		# чистый пароль
-	my $user_name = params->{user_name} || 'Unnamed';	# имя пользователя	(опционально)
+	my $user_name = params->{user_name} || 'Unnamed';	# имя пользователя	(опционально)	# используется в шаблоне -> возможен XSS
 
-	# ToDo check params
+	# проверим параметры
+	my @err = ();
+	if (!$user_login) {	# пустой логин -> ошибка
+		push @err, 'Empty login';
+	}
+	if (!$user_password) {	# пустой пароль -> ошибка
+		push @err, 'Empty pass';
+	}
+	if ($user_password =~ /^\d+$/) {	# пароль только из цифр -> ошибка
+		push @err, 'To easy password, add some word';
+	}
+	if (@err) {	# если хоть одна ошибка
+		$user_login = encode_entities($user_login, '<>&"');
+		$user_name = encode_entities($user_name, '<>&"');
+		return template 'login' => {user_login => $user_login, user_name_ins => $user_name, err => \@err, csrf_token => get_csrf_token()};	# заполняем введенными пользователем данными форму
+	}
 
+	# кодируем пароль
+	my $SALT = 'TCnotes web appl';
+	$user_password = md5_hex($user_password . $SALT);
+
+	# Проверяем наличие пользователя с указанным логином
+	my $sth = database->prepare('SELECT * FROM user WHERE (login = ?);');
+	if ($sth->execute($user_login)+0) {	# если пользователь есть (проверим пароль)
+		my $user = $sth->fetchrow_hashref();
+		if ($user->{pass} ne $user_password) {	# если пароль не соответствует вернемся
+			$user_login = encode_entities($user_login, '<>&"');
+			$user_name = encode_entities($user_name, '<>&"');
+			return template 'login' => {user_login => $user_login, user_name_ins => $user_name, err => ['Unknown pare: login password'], csrf_token => get_csrf_token()};
+		}
+		$user_name = $user->{name};
+	}
+	else {	# если пользовател нет (добавим)
+		$sth = database->prepare('INSERT INTO user (login, pass, name) VALUES (?, ?, ?);');
+		$sth->execute($user_login, $user_password, $user_name);
+	}
 
 	# запоминаем сессию
 	session user_login => $user_login;
-	session user_name => encode_entities($user_password, '<>&"');	# защищать от XSS (используется в приветствии в main)
+	session user_name => encode_entities($user_name, '<>&"');	# защищать от XSS (используется в приветствии в main)
 
 	# перенаправляем на запрошенную страницу
 	my $redirect = $redirect_dir;
 	$redirect_dir = undef;
-	redirect $redirect || '/';	# делаем redirect
+	redirect $redirect || '/';
 };
 
 # выполняем перед всем
@@ -199,6 +239,13 @@ hook before => sub {
         $redirect_dir = request->path_info;  
 		redirect 'login';
     }
+    # CSRF
+	if ( request->is_post() ) {
+		my $csrf_token = params->{'csrf_token'};
+		if ( !$csrf_token || !validate_csrf_token($csrf_token) ) {
+			redirect 'login';
+		}
+	}
 };
 
 # Выполняем перед загрузкой каждого шаблона
