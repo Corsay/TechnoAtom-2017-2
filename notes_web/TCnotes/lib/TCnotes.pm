@@ -1,5 +1,6 @@
 package TCnotes;
 use utf8;
+use Encode qw(encode_utf8);
 use Dancer2;
 use Dancer2::Plugin::Database;
 use Dancer2::Plugin::CSRF;
@@ -22,6 +23,14 @@ sub delete_entry {	# получает на вход $id, удаляем запи
 	unlink get_upload_dir . $id if (-e get_upload_dir . $id);
 }
 
+sub XSS_encode {	# борьба с xss
+	my @params = @_;
+	for my $param (@params) {
+		$param = encode_entities($param, '<>&"');
+	}
+	return @params;
+}
+
 # страница со ссылками на заметки текущего пользователя
 get '/MyNotes' => sub {
 	my $owner = session('user_login');	# текущий пользователь
@@ -35,7 +44,7 @@ get '/MyNotes' => sub {
 
 	# форматируем данные из бд (XSS, Pack)
 	for (@$MyNotes) {
-		$_->{title} = encode_entities($_->{title}, '<>&"');	# борьба с xss
+		($_->{title}) = XSS_encode($_->{title});
 		$_->{id} = unpack 'H*', pack 'Q', $_->{id};
 	}
 
@@ -82,9 +91,9 @@ get qr{^/([a-f0-9]{16})$} => sub {
 	my @text = <$fh>;
 	close($fh);
 
-	my $title = encode_entities($db_res->{title}, '<>&"');	# борьба с xss
+	my ($title) = XSS_encode($db_res->{title});	# борьба с xss
 	for(@text) {
-		$_ = encode_entities($_, '<>&"');	# борьба с xss
+		($_) = XSS_encode($_);
 		# "так как браузер табуляцию и начальные пробелы съест и ничего красивого не выйдет"
 		s/\t/&nbsp;&nbsp;&nbsp;&nbsp;/g;	# замена табуляции на 4 пробела
 		s/^ /&nbsp;/g;	# замена пробелов в начале строки
@@ -107,8 +116,7 @@ post '/' => sub {
 	my $text = params->{textnote};		# текст
 	my $title = params->{title}||'';	# заголовок(название)			(опционально)
 	my $expire = params->{expire};		# время жизни (0 = бесконечно)	(опционально)
-
-	# ToDo добавить пользователей которые могут читать заметку
+	my $accepted_users = params->{accepted_users};	# допущенные пользователи (разделенные разделителем (пробел, \t, ))	(опционально)
 
 	my @err = ();
 	if (!$text) {	# пустой текст -> ошибка
@@ -121,9 +129,8 @@ post '/' => sub {
 		push @err, 'Expare more then 365 days or bad format';
 	}
 	if (@err) {	# если хоть одна ошибка
-		$text = encode_entities($text, '<>&"');	# борьба с xss
-		$title = encode_entities($title, '<>&"');
-		return template 'index' => {text => $text, title => $title, expire => $expire, err => \@err};	# заполняем введенными пользователем данными форму
+		($text, $title) = XSS_encode($text, $title);
+		return template 'index' => {text => $text, title => $title, expire => $expire, accepted_users => $accepted_users, err => \@err};	# заполняем введенными пользователем данными форму
 	}
 
 	my $create_time = time();		# время создания (время прихода запроса на сервер)
@@ -147,14 +154,19 @@ post '/' => sub {
 		return template 'index' => {err => ['Try later']};
 	}
 
+	# получаем массив пользователей которым нужно выдать права на чтение этой заметки
+	$accepted_users = [$accepted_users =~ /(\w+)(?:\s+)?/g];
+	push @$accepted_users, $owner;	# добавляем в этот список владельца заметки
 	# Добавим права доступа на чтение заметки
 	$sth = database->prepare('INSERT INTO user_note (login, note_id) VALUES (?, cast(? as signed));');
-	unless ($sth->execute($owner,$id)) {
-		response->status(500);	# возвращаем ответ 500 - ошибка с нашей стороны
-		return template 'index' => {err => ['Internal server error']};
+	foreach (@$accepted_users) {
+		# проверим на наличие
+		my $sth2 = database->prepare('SELECT login from user_note where (login = ? and note_id = cast(? as signed));');
+		unless ($sth2->execute($_,$id)+0) {
+			# добавим запись
+			$sth->execute($_,$id)
+		}
 	}
-
-	# ToDo добавить права на чтение перечисленным в списке пользователям
 
 	# попробуем открыть файл и записать в него данные(заметку)
 	my $fh;
@@ -183,10 +195,15 @@ post '/login' => sub {
 	my $user_password = params->{user_password};		# чистый пароль
 	my $user_name = params->{user_name} || 'Unnamed';	# имя пользователя	(опционально)	# используется в шаблоне -> возможен XSS
 
+	$user_password = encode_utf8($user_password);
+
 	# проверим параметры
 	my @err = ();
 	if (!$user_login) {	# пустой логин -> ошибка
 		push @err, 'Empty login';
+	}
+	if ($user_login =~ /\W/) {	# логин содержащий что-то кроме букв и чисел -> ошибка
+		push @err, 'Login must contain only words and digits';
 	}
 	if (!$user_password) {	# пустой пароль -> ошибка
 		push @err, 'Empty pass';
@@ -195,8 +212,7 @@ post '/login' => sub {
 		push @err, 'To easy password, add some word';
 	}
 	if (@err) {	# если хоть одна ошибка
-		$user_login = encode_entities($user_login, '<>&"');
-		$user_name = encode_entities($user_name, '<>&"');
+		($user_login, $user_name) = XSS_encode($user_login, $user_name);
 		return template 'login' => {user_login => $user_login, user_name_ins => $user_name, err => \@err, csrf_token => get_csrf_token()};	# заполняем введенными пользователем данными форму
 	}
 
@@ -209,8 +225,7 @@ post '/login' => sub {
 	if ($sth->execute($user_login)+0) {	# если пользователь есть (проверим пароль)
 		my $user = $sth->fetchrow_hashref();
 		if ($user->{pass} ne $user_password) {	# если пароль не соответствует вернемся
-			$user_login = encode_entities($user_login, '<>&"');
-			$user_name = encode_entities($user_name, '<>&"');
+			($user_login, $user_name) = XSS_encode($user_login, $user_name);
 			return template 'login' => {user_login => $user_login, user_name_ins => $user_name, err => ['Unknown pare: login password'], csrf_token => get_csrf_token()};
 		}
 		$user_name = $user->{name};
@@ -274,9 +289,9 @@ hook before_template_render => sub {
 	# Добавим в него последние 10 добавленных записей доступных текущему пользователю
 	if (session('user_login')) {
 		my $sth = database->prepare(
-			'SELECT cast(id as unsigned) as id, create_time, title
-			FROM note N JOIN user_note U ON N.owner = U.login
-			where (N.owner = ? and (expire_time is null or expire_time > current_timestamp)) order by create_time desc limit 10;',
+			'SELECT cast(id as unsigned) as id, create_time, title FROM note
+			WHERE id IN (Select note_id as id from user_note where login = ?) and
+			(expire_time is null or expire_time > current_timestamp) ORDER BY create_time DESC LIMIT 10;',
 		);
 		$sth->execute(session('user_login'));
 		my $last_note = $sth->fetchall_arrayref( {} );

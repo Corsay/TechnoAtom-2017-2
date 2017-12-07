@@ -35,6 +35,13 @@
 			<div class="form_left">Note name</div>
 			<div class="form_right"><input type="text" name="title" size="20" maxlength="60" value="<% title %>" class="post_input"></div>
 		</div>
+		<!-- accepted users field -->
+		<div class="form_frame">
+			<div class="form_left">Note accepted users</div>
+			<div class="form_right">
+				<textarea name="accepted_users"><% accepted_users %></textarea>
+			</div>
+		</div>
 		<!-- submit button -->
 		<div class="form_frame">
 			<div class="form_left">&nbsp;</div>

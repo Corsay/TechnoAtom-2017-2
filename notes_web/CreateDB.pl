@@ -74,7 +74,7 @@ eval {
   expire_time_idx - индекс по времени жизни    (для того чтобы вычищать старые заметки)
 
   # 3. user_note - допуски к заметке
-  login - логин допущенного пользователя (строка (50 бит)), внешний ключ
+  login - логин допущенного пользователя (строка (50 бит)), (не внешний ключ - доступ дать можно но посмотрят только когда зарегистрируются) (FOREIGN KEY (login) REFERENCES user(login) ON DELETE CASCADE,)
   note_id - id заметки (64 бит число), внешний ключ
   Первичный ключ -> (login, note_id)
 =cut
@@ -99,7 +99,6 @@ eval {
   $stmt = qq(CREATE TABLE user_note (
     login VARCHAR(50) NOT NULL,
     note_id BIGINT NOT NULL,
-    FOREIGN KEY (login) REFERENCES user(login) ON DELETE CASCADE,
     FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE,
     PRIMARY KEY (login, note_id)
   ) charset utf8;);  $ret = $dbh->do($stmt);
