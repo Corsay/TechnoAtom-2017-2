@@ -59,25 +59,53 @@ eval {
   my ($stmt, $ret);
 =head2
   # Создание таблиц
-  # 1. note
-  id - уникальный код записи (64 бит число),
-  create_time - время создания (время),
-  expire_time - время жизни (время),
+  # 1. user - пользователь
+  login - уникальный никнейм пользователя (строка (50 бит)), Первичный ключ
+  pass - пароль пользователя (строка (50 бит)) -> md5 введенного пользователем пароля
+  name - имя (для приветсвия) (строка (100 бит))
+
+  # 2. note - заметка
+  id - уникальный код записи (64 бит число), Первичный ключ
+  owner - логин пользователя, создателя заметки (строка (50 бит)), внешний ключ
+  create_time - время создания (время)
+  expire_time - время жизни (время) (опционально)
+  title - заголовок заметки (строка (255 бит)) (опционально)
   create_time_idx - индекс по времени создания (основной параметр для поиска)
   expire_time_idx - индекс по времени жизни    (для того чтобы вычищать старые заметки)
-  # 2. notes
-  # 3. notes
+
+  # 3. user_note - допуски к заметке
+  login - логин допущенного пользователя (строка (50 бит)), внешний ключ
+  note_id - id заметки (64 бит число), внешний ключ
+  Первичный ключ -> (login, note_id)
 =cut
+
+  $stmt = qq(CREATE TABLE user (
+    login VARCHAR(50) PRIMARY KEY NOT NULL,
+    pass VARCHAR(50) NOT NULL,
+    name VARCHAR(100)
+  ) charset utf8;);  $ret = $dbh->do($stmt);
 
   $stmt = qq(CREATE TABLE note (
     id BIGINT PRIMARY KEY NOT NULL,
+    owner VARCHAR(50) NOT NULL,
     create_time TIMESTAMP NOT NULL,
     expire_time TIMESTAMP NULL,
     title VARCHAR(255),
+    FOREIGN KEY (owner) REFERENCES user(login) ON DELETE CASCADE,
     index create_time_idx (create_time),
     index expire_time_idx (expire_time)
-  ) charset utf8;);
-  $ret = $dbh->do($stmt);
+  ) charset utf8;);  $ret = $dbh->do($stmt);
+
+  $stmt = qq(CREATE TABLE user_note (
+    login VARCHAR(50) NOT NULL,
+    note_id BIGINT NOT NULL,
+    FOREIGN KEY (login) REFERENCES user(login) ON DELETE CASCADE,
+    FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE,
+    PRIMARY KEY (login, note_id)
+  ) charset utf8;);  $ret = $dbh->do($stmt);
+
+  $stmt = qq(INSERT INTO user VALUES ('1','1','DC'););  $ret = $dbh->do($stmt);
+  $stmt = qq(INSERT INTO user VALUES ('2','2','RT'););  $ret = $dbh->do($stmt);
 
   $dbh->commit; # Успешное завершение транзакции
 };

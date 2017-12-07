@@ -5,8 +5,9 @@ use Dancer2::Plugin::Database;
 use Digest::CRC qw(crc64);
 use HTML::Entities;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
+my $redirect_dir = undef;	# для перенаправления
 my $upload_dir = 'note';
 
 sub get_upload_dir {	# получаем каталог с файлами
@@ -21,14 +22,15 @@ sub delete_entry {	# получает на вход $id, удаляем запи
 
 # страница со ссылками на заметки текущего пользователя
 get '/MyNotes' => sub {
+	my $owner = session('user_login');	# текущий пользователь
 
-	# ToDo доделать
-
-	# забираем из бд только валидные заметки для текущего пользователя
-	my $MyNotes = database->selectall_arrayref(
-		'SELECT cast(id as unsigned) as id, create_time, title FROM note where (expire_time is null or expire_time > current_timestamp) order by create_time desc limit 10;',
-		{ Slice => {} }
+	# забираем из бд только валидные заметки для текущего пользователя ($owner -> строка, поэтому (для избегания SQL injection) делаем prepare)
+	my $sth = database->prepare(
+		'SELECT cast(id as unsigned) as id, create_time, title FROM note where (owner = ? and (expire_time is null or expire_time > current_timestamp)) order by create_time desc;'
 	);
+	$sth->execute($owner);
+	my $MyNotes = $sth->fetchall_arrayref( {} );
+
 	# форматируем данные из бд (XSS, Pack)
 	for (@$MyNotes) {
 		$_->{title} = encode_entities($_->{title}, '<>&"');	# борьба с xss
@@ -38,16 +40,27 @@ get '/MyNotes' => sub {
 	return template 'my_note_show.tt' => {MyNotes => $MyNotes};
 };
 
-# просматриваемая заметка
+# просматриваемая заметка (с проверкой разрешения (авторизацией))
 get qr{^/([a-f0-9]{16})$} => sub {
 	my ($id) = splat;
+	my $owner = session('user_login');
 	$id = unpack 'Q', pack 'H*', $id;	# распаковываем id из 16-ного числа
 
 	my $sth = database->prepare('SELECT cast(id as unsigned) as id, create_time, unix_timestamp(expire_time) as expire_time, title FROM note where id = cast(? as signed);');
-	unless ($sth->execute($id)) {	# если select ничего не вернул
+
+	unless ($sth->execute($id)+0) {	# если select ничего не вернул (т.е. вернул "0E0")
+		unlink get_upload_dir . $id if (-e get_upload_dir . $id);	# удаляем файл (если в бд нет записи, не факт что вычищен и файл из папки)
 		response->status(404);	# возвращаем ответ 404 - не найдено
 		return template 'index' => {err => ['Note not found']};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
 	}
+
+	# если у пользователя нет допуска к данной заметке
+	my $sth2 = database->prepare('SELECT login, cast(note_id as unsigned) as note_id FROM user_note where (login = ? and note_id = cast(? as signed));');
+	unless ($sth2->execute($owner, $id)+0) {	# если select ничего не вернул (т.е. вернул "0E0") (то считаем пользователя не авторизованным)
+		response->status(404);	# возвращаем ответ 404 - не найдено
+		return template 'index' => {err => ['Note not found']};	# рендерим основную страницу(не страницу 404), передавая параметром ошибки (для их вывода пользователю)
+	}
+
 	# если же запрос выполнился, пробуем получить эту запись
 	my $db_res = $sth->fetchrow_hashref();
 	# проверяем expire_time (на случай если на момент выборки expire_time истек (и cron не успел подчистить))
@@ -56,6 +69,7 @@ get qr{^/([a-f0-9]{16})$} => sub {
 		response->status(404);	# возвращаем ответ 404 - не найдено
 		return template 'index' => {err => ['Note expired']};
 	}
+
 	# читаем контент
 	my $fh;
 	unless (open($fh, '<:utf8', get_upload_dir . $id)) {	# если не удалось открыть, но в базе есть запись, то
@@ -86,6 +100,7 @@ get '/' => sub {
 
 # главная страница, создание заметки
 post '/' => sub {
+	my $owner = session('user_login');	# текущий пользователь
 	my $text = params->{textnote};		# текст
 	my $title = params->{title}||'';	# заголовок(название)			(опционально)
 	my $expire = params->{expire};		# время жизни (0 = бесконечно)	(опционально)
@@ -109,7 +124,7 @@ post '/' => sub {
 	my $create_time = time();		# время создания (время прихода запроса на сервер)
 	my $expire_time = $expire ? $create_time + $expire : undef;
 
-	my $sth = database->prepare('INSERT INTO note (id, create_time, expire_time, title) VALUES (cast(? as signed), from_unixtime(?), from_unixtime(?), ?);');
+	my $sth = database->prepare('INSERT INTO note (id, owner, create_time, expire_time, title) VALUES (cast(? as signed), ?, from_unixtime(?), from_unixtime(?), ?);');
 
 	my $id = '';
 	my $try_count = 10;
@@ -120,19 +135,70 @@ post '/' => sub {
 			last;
 		}
 		$id = crc64($text.$create_time . $id);
-		$id = undef unless $sth->execute($id, $create_time, $expire_time, $title);	# если добавление не удалось (id уже есть в базе)
+		$id = undef unless $sth->execute($id, $owner, $create_time, $expire_time, $title);	# если добавление не удалось (id уже есть в базе)
 	}
 	unless ($id) {	# если id в итоге стал undef (не удалось за 10 проходов)
-		die 'Try latter';
+		response->status(500);	# возвращаем ответ 500 - ошибка с нашей стороны
+		return template 'index' => {err => ['Try later']};
 	}
 
+	# Добавим права доступа на чтение заметки
+	$sth = database->prepare('INSERT INTO user_note (login, note_id) VALUES (?, cast(? as signed));');
+	unless ($sth->execute($owner,$id)) {
+		response->status(500);	# возвращаем ответ 500 - ошибка с нашей стороны
+		return template 'index' => {err => ['Internal server error']};
+	}
+	# ToDo добавить права на чтение перечисленным в списке пользователям
+
+	# попробуем открыть файл и записать в него данные(заметку)
 	my $fh;
 	unless (open($fh, '>', get_upload_dir . $id)) {
-		die 'Internal error '.$!;
+		response->status(500);	# возвращаем ответ 500 - ошибка с нашей стороны
+		return template 'index' => {err => ['Internal error '.$!]};
 	}
 	print $fh $text;
 	close($fh);
 	redirect '/' . unpack 'H*', pack 'Q', $id;	# пакуем и делаем redirect
+};
+
+# форма авторизации
+get '/login' => sub {
+	if (!session('user_login')) {
+		template 'login';
+	}
+	else {
+		redirect '/';	# если пользователь уже авторизован
+	}
+};
+
+# принимаем данные из login формы
+post '/login' => sub {
+	my $user_login = params->{user_login};				# логин пользователя
+	my $user_password = params->{user_password};		# чистый пароль
+	my $user_name = params->{user_name} || 'Unnamed';	# имя пользователя	(опционально)
+
+	# ToDo check params
+
+
+	# запоминаем сессию
+	session user_login => $user_login;
+	session user_name => encode_entities($user_password, '<>&"');	# защищать от XSS (используется в приветствии в main)
+
+	# перенаправляем на запрошенную страницу
+	my $redirect = $redirect_dir;
+	$redirect_dir = undef;
+	redirect $redirect || '/';	# делаем redirect
+};
+
+# выполняем перед всем
+hook before => sub {
+	set session => 'simple';	# volatile, in memory session
+
+	# Проверяем авторизованность пользователя
+	if (!session('user_login') && request->path_info !~ m{^/login}) {
+        $redirect_dir = request->path_info;  
+		redirect 'login';
+    }
 };
 
 # Выполняем перед загрузкой каждого шаблона
@@ -141,6 +207,11 @@ hook before_template_render => sub {
 
 	# Добавим PageTitle
 	$tokens->{PageTitle} = 'TCnotes';
+	# Добавим имя для приветствия
+	$tokens->{user_name} = session('user_name');
+	# разрешение выводить некоторую информацию (login использует тот же main layout и там блокируем вывод бокового меню)
+	if (!session('user_login')) { $tokens->{ACCEPT} = 0; }
+	else { $tokens->{ACCEPT} = 1; }
 
 	# Заполняем ExpireMas (для Select) (для шаблона index.tt)
 	my $ExpireMas = [
@@ -153,16 +224,22 @@ hook before_template_render => sub {
 	];
 	$tokens->{ExpireMas} = $ExpireMas;
 
-	# Добавим в него последние 10 добавленных записей
-	my $last_note = database->selectall_arrayref(
-		'SELECT cast(id as unsigned) as id, create_time, title FROM note where (expire_time is null or expire_time > current_timestamp) order by create_time desc limit 10;',
-		{ Slice => {} }
-	);
-	for (@$last_note) {
-		$_->{title} = encode_entities($_->{title}, '<>&"');	# борьба с xss
-		$_->{id} = unpack 'H*', pack 'Q', $_->{id};
+	# Добавим в него последние 10 добавленных записей доступных текущему пользователю
+	if (session('user_login')) {
+		my $sth = database->prepare(
+			'SELECT cast(id as unsigned) as id, create_time, title
+			FROM note N JOIN user_note U ON N.owner = U.login
+			where (N.owner = ? and (expire_time is null or expire_time > current_timestamp)) order by create_time desc limit 10;',
+		);
+		$sth->execute(session('user_login'));
+		my $last_note = $sth->fetchall_arrayref( {} );
+
+		for (@$last_note) {
+			$_->{title} = encode_entities($_->{title}, '<>&"');	# борьба с xss
+			$_->{id} = unpack 'H*', pack 'Q', $_->{id};
+		}
+		$tokens->{last_note} = $last_note;
 	}
-	$tokens->{last_note} = $last_note;
 };
 
 true;

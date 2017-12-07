@@ -16,6 +16,7 @@
 </head>
 <body>
 	<div id="page">
+		<% IF ACCEPT %>
 		<div id="sidebar">
 			<ul id="sidebar-items">
 				<li>
@@ -34,10 +35,11 @@
 				</li>
 			</ul>
 		</div>
+		<% END %>
 		<div id="content">
 			<div id="header">
 				<h1><a href="/">Notes</a></h1>
-				<h2>Welcome!</h2>
+				<h2>Welcome "<% user_name || 'Guest' %>"!</h2>
 			</div>
 			<div id="getting-started"><% content %></div>
 			<div style="clear: both"></div>

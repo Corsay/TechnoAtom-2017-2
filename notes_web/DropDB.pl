@@ -28,7 +28,7 @@ eval {
   my ($stmt, $ret);
 
   # удаление таблиц
-  foreach (qw(note)) {
+  foreach (qw(user_note note user)) {
     $stmt = "DROP TABLE IF EXISTS $_";
     $ret = $dbh->do($stmt);
   }
