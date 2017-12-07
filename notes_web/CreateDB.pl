@@ -4,14 +4,17 @@ use strict;
 use warnings;
 use DBI;
 use DBD::mysql;
+use Config::YAML;
+
+my $config = Config::YAML->new(config => 'database.yml');
 
 my $upload_dir = 'note';
 # конфиг "для создания" mysql бд
-my $driver   = "mysql";
-my $dbname = "TCnotes";
+my $driver = $config->{Database}{driver};
+my $dbname = $config->{Database}{dbname};
 my $dbd = "DBI:$driver:";
-my $username = "root";
-my $password = "";
+my $username = $config->{Database}{username};
+my $password = $config->{Database}{password};
 
 # попытка подключения к бд
 my $dbh = DBI->connect($dbd, $username, $password, { RaiseError => 1 })
