@@ -19,7 +19,7 @@ GetOptions (
 );
 
 # создаем экземпляр класса СоцСети
-my $soc = Local::SocialNetwork->new();
+my $soc = Local::SocialNetwork->new( {config => 'database.yml'} );
 
 # проверяем ввод пользователя - команду и параметры для команды
 my %coms = (

@@ -7,6 +7,7 @@ use experimental 'smartmatch';	# for smartmatch ~~
 use DBI;
 use DBD::SQLite;
 use JSON::XS;		# * Ответ приложения `bin/social_network.pl` должен быть в формате `JSON`
+use Config::YAML;
 
 use parent 'Local::Object';
 
@@ -32,11 +33,14 @@ our $VERSION = '1.00';
 sub init {
 	my ($self, $data) = @_;
 
-	my $driver   = "SQLite";
-	my $db_name = "users_relation.db";
+	# получаем конфиг
+	$self->{config} = Config::YAML->new(config => $data->{config});
+
+	my $driver = $self->{config}{Database}{driver};
+	my $db_name = $self->{config}{Database}{dbname};
 	my $dbd = "DBI:$driver:dbname=$db_name";
-	my $username = "";  # не ожидает логин и пароль
-	my $password = "";
+	my $username = $self->{config}{Database}{username};
+	my $password = $self->{config}{Database}{password};
 
 	# создаем и запоминаем соединение с БД
 	$self->{dbh} = DBI->connect($dbd, $username, $password, { RaiseError => 1 })
