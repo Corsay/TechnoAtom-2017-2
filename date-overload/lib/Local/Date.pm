@@ -50,6 +50,12 @@ use overload
 	# сложение/вычитание
 	'+' => '_add',	# числовой контекст (в случае добавления числа)
 	'-' => '_subtract',
+	# Сложение/вычитание с присваиванием
+	'+=' => '_add_assign',
+	'-=' => '_sub_assign',
+	# операции инкремента/декремента
+	'++' => '_inc',
+	'--' => '_dec',
 	fallback => 1;
 
 =head2
@@ -158,8 +164,7 @@ sub _subtract {
 		return $date;
 	}
 	elsif ($date2->isa('Local::Date')) {	# `Local::Date`
-		my $duration = $inversed ?  $date2->{epoch} - $date1->{epoch} : $date1->{epoch} - $date2->{epoch} ;
-		my $int = Local::Date::Interval->new(duration => $duration);
+		my $int = Local::Date::Interval->new(duration => $date1->{epoch} - $date2->{epoch});
 		return $int;
 	}
 	elsif ($date2 =~ /^\d+$/) {	# Целое число
@@ -167,6 +172,65 @@ sub _subtract {
 	}
 
 	return undef;
+}
+
+=head2
+	Сложение/вычитание с присваиванием.
+	* Операции должны прибавлять/вычитать указанное количество секунд к/из объекта.
+	* Если аргументом является число или объект типа `Local::Date::Interval`, то должен возращаться исходный объект типа `Local::Date`.
+	* Новых объектов создаваться не должно!
+	* В остальных случая должно вызываться исключение.
+=cut
+sub _add_assign {
+	my ($date1, $date2) = @_;
+
+	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
+		$date1->{epoch} += $date2->duration();
+		$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+		return $date1;
+	}
+	elsif ($date2 =~ /^\d+$/) {	# Целое число
+		$date1->{epoch} += $date2;
+		$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+		return $date1;
+	}
+
+	die "Incorrect object\n";
+}
+
+sub _sub_assign {
+	my ($date1, $date2) = @_;
+
+	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
+		$date1->{epoch} -= $date2->duration();
+		$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+		return $date1;
+	}
+	elsif ($date2 =~ /^\d+$/) {	# Целое число
+		$date1->{epoch} -= $date2;
+		$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+		return $date1;
+	}
+
+	die "Incorrect object\n";
+}
+
+=head2
+	Операции инкремента/декремента.
+	* К исходному объекту должна быть добавлена/вычтена одна секунда.
+	* Новых объектов создаваться не должно!
+=cut
+sub _inc {
+	my ($date1) = @_;
+	$date1->{epoch}++;
+	$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+	return $date1;
+}
+sub _dec {
+	my ($date1) = @_;
+	$date1->{epoch}--;
+	$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
+	return $date1;
 }
 
 1;
