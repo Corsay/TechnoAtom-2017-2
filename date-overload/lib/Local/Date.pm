@@ -56,6 +56,14 @@ use overload
 	# операции инкремента/декремента
 	'++' => '_inc',
 	'--' => '_dec',
+	# операции сравнения
+	'<' => '_sort_digit',
+	'<=' => '_sort_digit',
+	'>' => '_sort_digit',
+	'>=' => '_sort_digit',
+	'==' => '_sort_digit',
+	'!=' => '_sort_digit',
+	'<=>' => '_sort_digit',
 	fallback => 1;
 
 =head2
@@ -134,11 +142,11 @@ sub _add {
 	my ($date1, $date2) = @_;
 
 	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
-		my $date = Local::Date->new(epoch => $date1->{epoch} + $date2->duration() );
+		my $date = Local::Date->new(epoch => $date1->epoch() + $date2->duration() );
 		return $date;
 	}
 	elsif ($date2 =~ /^\d+$/) {	# Целое число
-		return $date1->{epoch} + $date2;
+		return $date1->epoch() + $date2;
 	}
 
 	return undef;
@@ -160,15 +168,15 @@ sub _subtract {
 	if ($inverse) { return undef unless $date2->isa('Local::Date'); }
 
 	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
-		my $date = Local::Date->new(epoch => $date1->{epoch} - $date2->duration() );
+		my $date = Local::Date->new(epoch => $date1->epoch() - $date2->duration() );
 		return $date;
 	}
 	elsif ($date2->isa('Local::Date')) {	# `Local::Date`
-		my $int = Local::Date::Interval->new(duration => $date1->{epoch} - $date2->{epoch});
+		my $int = Local::Date::Interval->new(duration => $date1->epoch() - $date2->epoch());
 		return $int;
 	}
 	elsif ($date2 =~ /^\d+$/) {	# Целое число
-		return $date1->{epoch} - $date2;
+		return $date1->epoch() - $date2;
 	}
 
 	return undef;
@@ -231,6 +239,29 @@ sub _dec {
 	$date1->{epoch}--;
 	$date1->_get_data_comp();	# корректируем компоненты даты (по GMT)
 	return $date1;
+}
+
+=head2
+	Операции сравнения.
+	* Должна быть возможность сравнивать объекты между собой, а так же с временем заданным как количество секунд (*unix timestamp*).
+	* Так же объекты должны корректно сортироваться функцией *sort*.
+=cut
+sub _get_seconds {
+	my ($date1, $date2) = @_;
+
+	my $sec1 = $date1->epoch();
+	my $sec2;
+	if ($date2->isa('Local::Date::Interval')) { $sec2 = $date2->duration(); }	# `Local::Date::Interval`
+	elsif ($date2->isa('Local::Date')) { $sec2 = $date2->epoch(); }	# `Local::Date`
+	elsif ($date2 =~ /^\d+$/) { $sec2 = $date2; }	# число
+
+	return ($sec1, $sec2);
+}
+sub _sort_digit {	# сортировка как чисел (<=>)
+	my ($date1, $date2, $inverted) = @_;
+	my ($sec1, $sec2) = _get_seconds($date1, $date2);
+	return -$inverted || 1 unless ($sec2);	# если подали что-то не то то делаем как сортировка
+	return $sec1 <=> $sec2;
 }
 
 1;
