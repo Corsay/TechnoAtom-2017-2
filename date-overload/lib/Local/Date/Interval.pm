@@ -1,6 +1,6 @@
 package Local::Date::Interval;
 
-use parent Local::Date;
+use parent Local::Object;
 
 use DDP;
 
