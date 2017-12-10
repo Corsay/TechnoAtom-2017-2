@@ -14,7 +14,7 @@ BEGIN { use_ok("Local::Date::Interval"); }
 my $date1 = Local::Date->new(epoch => 1495393394); 
 my $date2 = Local::Date->new(day => 1, month => 5, year => 2017, hours => 3, minutes => 20, seconds => 50);
 
-my $int1 = Local::Date::Interval->new(duration => 7200); 
+my $int1 = Local::Date::Interval->new(duration => 7200);
 my $int2 = Local::Date::Interval->new(days => 30, hours => 5, minutes => 10, seconds => 15);
 
 # Date cast tests
