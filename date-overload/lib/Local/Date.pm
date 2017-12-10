@@ -3,7 +3,9 @@ package Local::Date;
 use parent Local::Object;
 
 use Time::Local;
-use POSIX qw(strftime);
+use locale;
+use POSIX qw(strftime locale_h);
+setlocale(LC_TIME, "C");
 
 use DDP;
 
