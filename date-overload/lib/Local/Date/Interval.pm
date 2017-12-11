@@ -2,8 +2,6 @@ package Local::Date::Interval;
 
 use parent Local::Object;
 
-use DDP;
-
 =head1 NAME
 	Local::Date::Interval - объект временного интревала
 =head1 VERSION
@@ -90,8 +88,8 @@ sub _init_by_duration_comp {
 sub _init_by_duration {
 	my ($self, %params) = @_;
 
-    # запоминаем длительность интервала в секундах
-    my $duration = $params{duration};
+	# запоминаем длительность интервала в секундах
+	my $duration = $params{duration};
 	$self->{duration} = $duration;
 
 	# получаем компоненты длительности интервала

@@ -86,7 +86,7 @@ sub _add {
 	my ($date1, $date2) = @_;
 
 	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
-		my $date = Local::Date::Interval->new(duration => $date1->duration() + $date2->duration() );
+		my $date = Local::Date::Interval->new( duration => $date1->duration() + $date2->duration() );
 		return $date;
 	}
 	elsif ($date2 =~ /^\d+$/) {	# Целое число
@@ -110,7 +110,7 @@ sub _subtract {
 	if ($inverse) { return undef unless $date2->isa('Local::Date::Interval'); }
 
 	if ($date2->isa('Local::Date::Interval')) {	# `Local::Date::Interval`
-		my $date = Local::Date::Interval->new(duration => $date1->duration() - $date2->duration() );
+		my $date = Local::Date::Interval->new( duration => $date1->duration() - $date2->duration() );
 		return $date;
 	}
 	elsif ($date2 =~ /^\d+$/) {	# Целое число

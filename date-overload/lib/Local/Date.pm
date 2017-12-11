@@ -9,8 +9,6 @@ setlocale(LC_TIME, "C");
 
 use Local::Date::Interval;
 
-use DDP;
-
 =head1 NAME
 	Local::Date - объект даты
 =head1 VERSION
@@ -93,7 +91,7 @@ sub _init_by_date {
 	$self->{year} = $params{year};
 
 	# получаем timestamp (по GMT)
-    my $time = timegm($self->{seconds}, $self->{minutes}, $self->{hours}, $self->{day}, $self->{month}, $self->{year});
+	my $time = timegm($self->{seconds}, $self->{minutes}, $self->{hours}, $self->{day}, $self->{month}, $self->{year});
 	$self->{epoch} = $time;
 
 	return;
@@ -103,7 +101,7 @@ sub _init_by_date {
 sub _init_by_timestamp {
 	my ($self, %params) = @_;
 
-    # запоминаем timestamp
+	# запоминаем timestamp
 	$self->{epoch} = $params{epoch};
 
 	# получаем компоненты даты (по GMT)
