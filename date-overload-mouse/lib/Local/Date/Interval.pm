@@ -54,23 +54,13 @@ sub _get_duration_comp {
 use overload
 	# контексты
 	'""' => '_string_con',	# строковый
+	'0+' => '_digit_con',	# числовой контекст
 	# сложение/вычитание
-	'+' => '_add',	# числовой контекст (в случае добавления числа)
+	'+' => '_add',
 	'-' => '_subtract',
 	# Сложение/вычитание с присваиванием
 	'+=' => '_add_assign',
 	'-=' => '_sub_assign',
-	# операции инкремента/декремента
-	'++' => '_inc',
-	'--' => '_dec',
-	# операции сравнения
-	'<' => '_sort_digit',
-	'<=' => '_sort_digit',
-	'>' => '_sort_digit',
-	'>=' => '_sort_digit',
-	'==' => '_sort_digit',
-	'!=' => '_sort_digit',
-	'<=>' => '_sort_digit',
 	fallback => 1;
 
 =head2
@@ -85,6 +75,13 @@ sub _string_con {
 =head2
 	Числовой контекст.
 	* Интервал должен преобразовываться в число равное длительности интервала в секундах.
+=cut
+sub _digit_con {
+	my ($self) = @_;
+	return $self->duration();
+}
+
+=head2
 	Сложение.
 	* Операция должна прибавлять указанное количество секунд к объекту.
 	* Если вторым операндом является объект типа `Local::Date::Interval`, то операция должна возвращать объект типа `Local::Date::Interval`.
@@ -164,44 +161,6 @@ sub _sub_assign {
 	}
 
 	die "Incorrect object\n";
-}
-
-=head2
-	Операции инкремента/декремента.
-	* К исходному объекту должна быть добавлена/вычтена одна секунда.
-	* Новых объектов создаваться не должно!
-=cut
-sub _inc {
-	my ($date1) = @_;
-	$date1->duration( $date1->duration() +1 );
-	return $date1;
-}
-sub _dec {
-	my ($date1) = @_;
-	$date1->duration( $date1->duration() - 1 );
-	return $date1;
-}
-
-=head2
-	Операции сравнения.
-	* Должна быть возможность сравнивать объекты между собой, а так же с временем заданным как количество секунд (*unix timestamp*).
-	* Так же объекты должны корректно сортироваться функцией *sort*.
-=cut
-sub _get_seconds {
-	my ($date1, $date2) = @_;
-
-	my $sec1 = $date1->duration();
-	my $sec2;
-	if ($date2->isa('Local::Date::Interval')) { $sec2 = $date2->duration(); }	# `Local::Date::Interval`
-	elsif ($date2 =~ /^\d+$/) { $sec2 = $date2; }	# число
-
-	return ($sec1, $sec2);
-}
-sub _sort_digit {	# сортировка как чисел (<=>)
-	my ($date1, $date2, $inverted) = @_;
-	my ($sec1, $sec2) = _get_seconds($date1, $date2);
-	return -$inverted || 1 unless ($sec2);	# если подали что-то не то то делаем как сортировка
-	return $sec1 <=> $sec2;
 }
 
 no Mouse;
