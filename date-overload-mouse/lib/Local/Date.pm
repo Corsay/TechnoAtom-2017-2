@@ -14,12 +14,19 @@ use Mouse;
 has [qw(day month year hours minutes seconds)] => (
 	is => 'rw',
 	isa => 'Int',
+	trigger => sub {
+		my ($self) = @_;
+		$self->_init_by_date_comp() if (defined $self->day() and defined $self->month() and defined $self->year() and defined $self->hours() and defined $self->minutes() and defined $self->seconds());
+	},
 );
 has epoch => (
 	is => 'rw',
 	isa => 'Int',
 	builder => '_init_by_date_comp',
-	trigger => \&_get_date_comp,	# при изменении timestamp изменять соответственно day month year hours minutes seconds
+	trigger => sub { 	# при изменении timestamp изменять соответственно day month year hours minutes seconds
+		my ($self, $nv, $ov) = @_;
+		$self->_get_date_comp() if (not defined $ov or $ov != $nv);
+	},
 );
 has format => (
 	is => 'rw',
@@ -32,6 +39,8 @@ has format => (
 =cut
 sub _init_by_date_comp {
 	my ($self) = @_;
+	# убиваем если хотябы один параметр(day month year hours minutes seconds) не был передан
+	die "Not enought attributes 'day month year hours minutes seconds'\n" if (not defined $self->seconds() or not defined $self->minutes() or not defined $self->hours() or not defined $self->day() or not defined $self->month() or not defined $self->year());
 	my $time = timegm($self->seconds(), $self->minutes(), $self->hours(), $self->day(), $self->month() - 1, $self->year());
 	$self->epoch($time);
 }
@@ -48,7 +57,7 @@ sub _get_date_comp {
 	$self->minutes($time[1]);
 	$self->hours($time[2]);
 	$self->day($time[3]);
-	$self->month($time[4]);
+	$self->month($time[4] + 1);	# save month in form 1..12
 	$self->year(1900 + $time[5]);
 }
 

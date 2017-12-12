@@ -8,12 +8,19 @@ use Mouse;
 has [qw(days hours minutes seconds)] => (
 	is => 'rw',
 	isa => 'Int',
+	trigger => sub {
+		my ($self) = @_;
+		$self->_init_by_duration_comp if (defined $self->days() and defined $self->hours() and defined $self->minutes() and defined $self->seconds());
+	},
 );
 has duration => (
 	is => 'rw',
 	isa => 'Int',
 	builder => '_init_by_duration_comp',
-	trigger => \&_get_duration_comp,	# при изменении duration изменять соответственно days hours minutes seconds
+	trigger => sub {	# при изменении duration изменять соответственно days hours minutes seconds
+		my ($self, $nv, $ov) = @_;
+		$self->_get_duration_comp() if (not defined $ov or $ov != $nv);
+	},
 );
 
 =head2
@@ -21,6 +28,8 @@ has duration => (
 =cut
 sub _init_by_duration_comp {
 	my ($self) = @_;
+	# убиваем если хотябы один параметр(days hours minutes seconds) не был передан
+	die "Not enought attributes 'days hours minutes seconds'\n" if (not defined $self->seconds() or not defined $self->minutes() or not defined $self->hours() or not defined $self->days());
 	# получаем длительность интервала в секундах
 	$self->duration( ( ( $self->days() * 24 + $self->hours() ) * 60 + $self->minutes() ) * 60 + $self->seconds() );
 }
