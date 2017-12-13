@@ -14,16 +14,13 @@ use Mouse;
 has [qw(day month year hours minutes seconds)] => (
 	is => 'rw',
 	isa => 'Int',
-	trigger => sub {
-		my ($self) = @_;
-		$self->_init_by_date_comp() if (defined $self->day() and defined $self->month() and defined $self->year() and defined $self->hours() and defined $self->minutes() and defined $self->seconds());
-	},
+	trigger => sub { $_[0]->clear_epoch(); },
 );
 has epoch => (
 	is => 'rw',
 	isa => 'Int',
-	builder => '_init_by_date_comp',
-	trigger => sub { 	# при изменении timestamp изменять соответственно day month year hours minutes seconds
+	lazy_build => 1,
+	trigger => sub {	# при изменении timestamp изменять соответственно day month year hours minutes seconds
 		my ($self, $nv, $ov) = @_;
 		$self->_get_date_comp() if (not defined $ov or $ov != $nv);
 	},
@@ -35,12 +32,34 @@ has format => (
 );
 
 =head2
+	Конструктор
+=cut
+around BUILDARGS => sub {
+	my ($orig, $class, %p) = @_;
+	if ( $p{epoch} ) {
+		# инициализируем $p{day}, $p{month} и т.д.
+		my @time = gmtime( $p{epoch} );
+		$p{seconds} = $time[0];
+		$p{minutes} = $time[1];
+		$p{hours} = $time[2];
+		$p{day} = $time[3];
+		$p{month} = $time[4] + 1;
+		$p{year} = 1900 + $time[5];
+	} else {
+		# проверяем наличие всех параметров (grep вернет количество !defined, если 0 -> нет ошибки)
+		die "Not enought attributes 'day month year hours minutes seconds'\n" if grep { !defined $p{$_} }  qw/day month year hours minutes seconds/;
+		# инициализируем $p{epoch} из $p{day}, $p{month} и т.д.
+		my $time = timegm($p{seconds}, $p{minutes}, $p{hours}, $p{day}, $p{month} - 1, $p{year});
+		$p{epoch} = $time;
+	}
+	return $class->$orig(%p);
+};
+
+=head2
 	Инициализируем epoch (сразу) согласно переданной дате.
 =cut
-sub _init_by_date_comp {
+sub _build_epoch {
 	my ($self) = @_;
-	# убиваем если хотябы один параметр(day month year hours minutes seconds) не был передан
-	die "Not enought attributes 'day month year hours minutes seconds'\n" if (not defined $self->seconds() or not defined $self->minutes() or not defined $self->hours() or not defined $self->day() or not defined $self->month() or not defined $self->year());
 	my $time = timegm($self->seconds(), $self->minutes(), $self->hours(), $self->day(), $self->month() - 1, $self->year());
 	$self->epoch($time);
 }
