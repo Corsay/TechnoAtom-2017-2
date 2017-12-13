@@ -6,7 +6,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
-use Test::More tests => 70;
+use Test::More tests => 60;
 
 BEGIN { use_ok("Local::Date"); }
 BEGIN { use_ok("Local::Date::Interval"); }
@@ -131,25 +131,3 @@ $date13->month( $date13->month() + 1 );
 is($date13 - $date18 + 0, 0, "Add one month check");
 $date13->year( $date13->year() + 1 );
 is($date13 - $date19 + 0, 0, "Add one year check");
-
-# test date correction
-my $date20 = Local::Date->new(year => 2017, month => 5, day => 1, hours => 3, minutes => 20, seconds => 50);
-$date20->seconds( $date20->seconds() + 25 );
-is($date20->seconds(), 15, "Add seconds: new seconds");
-is($date20->minutes(), 21, "Add seconds: new minutes");
-
-$date20->minutes( $date20->minutes() + 49 );
-is($date20->minutes(), 10, "Add minutes: new minutes");
-is($date20->hours(), 4, "Add minutes: new hours");
-
-$date20->hours( $date20->hours() + 25 );
-is($date20->hours(), 5, "Add hours: new hours");
-is($date20->day(), 2, "Add hours: new day");
-
-$date20->day( $date20->day() + 60 );
-is($date20->day(), 1, "Add days: new day");
-is($date20->month(), 7, "Add days: new month");
-
-$date20->month( $date20->month() + 14 );
-is($date20->month(), 9, "Add months: new month");
-is($date20->year(), 2018, "Add months: new year");

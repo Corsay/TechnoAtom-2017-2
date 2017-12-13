@@ -56,68 +56,6 @@ around BUILDARGS => sub {
 };
 
 =head2
-	Коррекция параметров попадающих в аксессоры аттрибутов:
-	* seconds	(0..59)
-	* minutes	(0..59)
-	* hours		(0..23)
-	* day		(зависит от месяца)
-	* month		(1..12)
-=cut
-after seconds => sub {
-	my ($self, $sec) = @_;
-	return unless $sec;
-	# корректируем
-	my $min = int($sec / 60);
-	$sec -= $min * 60;
-	#$self->seconds( $sec ) if $sec != $self->seconds();	# избегаем deep recursion (Будет чаще заходить сюда)
-	$self->{seconds} = $sec;	# избегаем deep recursion
-	$self->minutes( $self->minutes() + $min ) if $min;
-};
-after minutes => sub {
-	my ($self, $min) = @_;
-	return unless $min;
-	# корректируем
-	my $hours = int($min / 60);
-	$min -= $hours * 60;
-	$self->{minutes} = $min;	# избегаем deep recursion
-	$self->hours( $self->hours() + $hours ) if $hours;
-};
-after hours => sub {
-	my ($self, $hours) = @_;
-	return unless $hours;
-	# корректируем
-	my $day = int($hours / 24);
-	$hours -= $day * 24;
-	$self->{hours} = $hours;	# избегаем deep recursion
-	$self->day( $self->day() + $day ) if $day;
-};
-around day => sub {
-	my $orig = shift;
-	my $class = shift;
-	return $class->$orig() unless @_;
-	my $day = $class->{day};	# текущие дни
-	$class->$orig(@_); # вызываем оригинальную функцию (которая изменит количество дней (в том числе на то, которое выходит за диапазон для текущего месяца))
-
-	my $days = $class->day() - $day;	# разница в днях (стало - было)
-	if ( $days ) {
-		my $epoch = timegm($class->seconds(), $class->minutes(), $class->hours(), $day, $class->month() - 1, $class->year());	# получаем состояние epoch до изменения day
-		$epoch += $days * 86400;	# прибавляем к epoch разницу в секундах
-		my @time = gmtime($epoch);	# разбиваем полученный timestamp(epoch) на части
-		$class->{day} = $time[3];	# получаем день
-		$class->month($time[4] + 1) if ($class->{month} != $time[4] + 1);	# изменяем месяц
-	}
-};
-after month => sub {
-	my ($self, $month) = @_;
-	return unless $month;
-	# корректируем
-	my $year = int($month / 12);
-	$month -= $year * 12;
-	$self->{month} = $month;	# избегаем deep recursion
-	$self->year( $self->year() + $year ) if $year;
-};
-
-=head2
 	Инициализируем epoch согласно текущей дате.
 =cut
 sub _build_epoch {
