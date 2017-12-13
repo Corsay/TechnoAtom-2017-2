@@ -8,15 +8,12 @@ use Mouse;
 has [qw(days hours minutes seconds)] => (
 	is => 'rw',
 	isa => 'Int',
-	trigger => sub {
-		my ($self) = @_;
-		$self->_init_by_duration_comp if (defined $self->days() and defined $self->hours() and defined $self->minutes() and defined $self->seconds());
-	},
+	trigger => sub { $_[0]->clear_duration(); },
 );
 has duration => (
 	is => 'rw',
 	isa => 'Int',
-	builder => '_init_by_duration_comp',
+	lazy_build => 1,
 	trigger => sub {	# при изменении duration изменять соответственно days hours minutes seconds
 		my ($self, $nv, $ov) = @_;
 		$self->_get_duration_comp() if (not defined $ov or $ov != $nv);
@@ -24,12 +21,29 @@ has duration => (
 );
 
 =head2
+	Конструктор
+=cut
+around BUILDARGS => sub {
+	my ($orig, $class, %p) = @_;
+	if ( defined $p{duration} ) {
+		my $duration = $p{duration};
+		$p{days} = int($duration / 60 / 60 / 24);	$duration %= 60 * 60 * 24;
+		$p{hours} = int($duration / 60 / 60);	$duration %= 60 * 60;
+		$p{minutes} = int($duration / 60);	$duration %= 60;
+		$p{seconds} = int($duration);
+	} else {
+		# проверяем наличие всех параметров (grep вернет количество !defined, если 0 -> нет ошибки)
+		die "Not enought attributes 'days hours minutes seconds'\n" if grep { !defined $p{$_} }  qw/days hours minutes seconds/;
+		$p{duration} = ( ( $p{days} * 24 + $p{hours} ) * 60 + $p{minutes} ) * 60 + $p{seconds};
+	}
+	return $class->$orig(%p);
+};
+
+=head2
 	Инициализируем duration (сразу) согласно переданным компонентам длительности интервала.
 =cut
-sub _init_by_duration_comp {
+sub _build_duration {
 	my ($self) = @_;
-	# убиваем если хотябы один параметр(days hours minutes seconds) не был передан
-	die "Not enought attributes 'days hours minutes seconds'\n" if (not defined $self->seconds() or not defined $self->minutes() or not defined $self->hours() or not defined $self->days());
 	# получаем длительность интервала в секундах
 	$self->duration( ( ( $self->days() * 24 + $self->hours() ) * 60 + $self->minutes() ) * 60 + $self->seconds() );
 }

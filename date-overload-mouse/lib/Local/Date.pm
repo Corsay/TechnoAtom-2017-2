@@ -36,7 +36,7 @@ has format => (
 =cut
 around BUILDARGS => sub {
 	my ($orig, $class, %p) = @_;
-	if ( $p{epoch} ) {
+	if ( defined $p{epoch} ) {
 		# инициализируем $p{day}, $p{month} и т.д.
 		my @time = gmtime( $p{epoch} );
 		$p{seconds} = $time[0];
