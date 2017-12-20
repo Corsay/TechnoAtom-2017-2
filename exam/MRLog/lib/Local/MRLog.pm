@@ -95,6 +95,7 @@ sub _log_main {
 	print STDERR "\n";
 }
 
+# ToDo минимизировать количество идентичных вызовов log_<level> ...
 sub log_error {
 	my ($package) = caller;
 	_log_main('error', $package, @_);
@@ -131,6 +132,7 @@ sub _log_cluck_main {
 	# ToDo stacktrace
 }
 
+# ToDo минимизировать количество идентичных вызовов log_cluck_<level> ...
 sub log_cluck_error {
 	my ($package) = caller;
 	_log_cluck_main('error', $package, @_);
