@@ -99,30 +99,61 @@ sub log_error {
 	my ($package) = caller;
 	_log_main('error', $package, @_);
 }
-
 sub log_warn {
 	my ($package) = caller;
 	_log_main('warn', $package, @_);
 }
-
 sub log_info {
 	my ($package) = caller;
 	_log_main('info', $package, @_);
 }
-
 sub log_debug1 {
 	my ($package) = caller;
 	_log_main('debug1', $package, @_);
 }
-
 sub log_debug2 {
 	my ($package) = caller;
 	_log_main('debug2', $package, @_);
 }
-
 sub log_debug3 {
 	my ($package) = caller;
 	_log_main('debug3', $package, @_);
+}
+
+=head1 Loging_StackTrace_Output
+	standart log_<level> func with stacktrace
+=cut
+=head2
+	input -> same with _log_main
+=cut
+sub _log_cluck_main {
+	_log_main(@_);
+	# ToDo stacktrace
+}
+
+sub log_cluck_error {
+	my ($package) = caller;
+	_log_cluck_main('error', $package, @_);
+}
+sub log_cluck_warn {
+	my ($package) = caller;
+	_log_cluck_main('warn', $package, @_);
+}
+sub log_cluck_info {
+	my ($package) = caller;
+	_log_cluck_main('info', $package, @_);
+}
+sub log_cluck_debug1 {
+	my ($package) = caller;
+	_log_cluck_main('debug1', $package, @_);
+}
+sub log_cluck_debug2 {
+	my ($package) = caller;
+	_log_cluck_main('debug2', $package, @_);
+}
+sub log_cluck_debug3 {
+	my ($package) = caller;
+	_log_cluck_main('debug3', $package, @_);
 }
 
 =head1 Loging_Checkers
