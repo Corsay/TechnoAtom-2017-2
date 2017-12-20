@@ -36,5 +36,11 @@ Local::MRLog->log_level('debug3');	# change log level for cur package to debug3 
 
 package TestLogLevel;
 Local::MRLog->log_debug3('7');	# nothing printed because cur package log_level = info
+
+Local::MRLog->log_prefix('my_pref: ');	# добавим префикс
 Local::MRLog->log_level('debug3');	# change log level for cur package to debug3 (max)
-Local::MRLog->log_debug3('five', '6');	# printed 'five', '6'
+Local::MRLog->log_debug3('five', '6');	# printed my_pref: five 6
+
+Local::MRLog->log_prefix(sub { return $_[0] . ": "; });	# добавим префикс функцию
+Local::MRLog->log_level('debug3');	# change log level for cur package to debug3 (max)
+Local::MRLog->log_debug3('five', '7');	# printed debug3: five 7

@@ -36,7 +36,16 @@ my %log_levels = (
 	debug2 => 4,
 	debug3 => 5,
 );
-# уровни логирования для каждого вызывающего модуля
+# тоже в обратном порядке (для отправки в prefix функцию)
+my %log_hierarchy = (
+	0 => 'error',
+	1 => 'warn',
+	2 => 'info',
+	3 => 'debug1',
+	4 => 'debug2',
+	5 => 'debug3',
+);
+# настройки логирования для каждого вызывающего модуля
 our %mod_log_levels = ();
 # по-умолчанию
 my $log_level = 'info';
@@ -62,8 +71,9 @@ sub _log_main {
 	return if $cur_pac_level < $log_levels{$level};	# если уровень логирования меньше чем требуемый
 
 	# получаем prefix
-	my $prefix = $log_prefix;
-	$prefix = $log_prefix->( $cur_pac_level ) if (ref $log_prefix eq 'CODE');
+	my $cur_pac_pref = $mod_log_levels{ $package }{ log_prefix };
+	my $prefix = $cur_pac_pref;
+	$prefix = $cur_pac_pref->( $log_hierarchy{ $cur_pac_level } ) if (ref $cur_pac_pref eq 'CODE');
 	print STDERR $prefix_color . $prefix . $default_color;
 
 	# выводим аргументы в STDERR
@@ -71,6 +81,18 @@ sub _log_main {
 	while (@args) {
 		my $arg = shift @args;
 		if (ref $arg ne '') {
+			my $printed_ref = Dumper($arg);
+
+			#use DDP;
+			#p $printed_ref;
+			#$printed_ref = split "\n", $printed_ref;
+			#p $printed_ref;
+			#$printed_ref = join " ", $printed_ref;
+			#p $printed_ref;
+
+			#for my $line (@printed_ref) {
+			#	print STDERR $line;
+			#}
 			print STDERR Dumper($arg);
 		}
 		else {
@@ -122,7 +144,10 @@ sub log_debug3 {
 =cut
 sub _check_package_log_level {
 	my ($package) = @_;
-	$mod_log_levels{ $package }{ log_level } = $log_levels{$log_level} unless (exists $mod_log_levels{ $package });	# устанавливаем вес log_level по умолчанию.
+	unless (exists $mod_log_levels{ $package }) {	# устанавливаем по умолчанию.
+		$mod_log_levels{ $package }{ log_level } = $log_levels{$log_level} unless exists $mod_log_levels{ $package }{ log_prefix };
+		$mod_log_levels{ $package }{ log_prefix } = $log_prefix unless exists $mod_log_levels{ $package }{ log_prefix };
+	}
 	return;
 }
 
@@ -151,11 +176,12 @@ sub log_level {
     Также в эту функцию в неё в качестве аргумента передается уровень логирования(чтобы его можно было вывести в префиксе)
 =cut
 sub log_prefix {
+	my $self = shift;
 	my $pref = shift;
+	my ($package) = caller;
 
 	# ToDo проверить на соответствие параметра ожидаемому (строка или ссылка на функцию)
-
-	$log_prefix = $pref;
+	$mod_log_levels{ $package }{ log_prefix } = $pref;
 }
 
 =head1 AUTHOR
