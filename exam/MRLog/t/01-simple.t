@@ -20,6 +20,8 @@ my $TEST = {
 	},
 };
 
+diag("Tests for Local::MRLog");
+
 # ToDo перенапрвлять STDERR в handler и сравнивать результат с ожидаемым
 
 # Тест уровней логирования (обращение на прямую)
@@ -50,14 +52,20 @@ Local::MRLog::log_debug3('five', '8');	# printed debug3: five 7
 no Local::MRLog;
 
 package TestLogLevel2;
-use Local::MRLog qw/log_cluck_info/;
+use Local::MRLog qw/log_cluck_info log_datum_info/;
 # функция без использования скобок
 log_info '3','4', $TEST;	# printed 3 4 $TEST by Dunper
-Local::MRLog::log_info '5','6', $TEST;	# printed 5 6 $TEST через Dunper
+Local::MRLog::log_info '5','6', $TEST;	# printed 5 6 $TEST by Dunper
 # log_cluck with stacktrace
 Local::MRLog::log_prefix('my_new_pref: ');	# add prefix
-log_cluck_info '7','8', $TEST;	# printed my_new_pref: 7 8 $TEST через Dunper
-Local::MRLog::log_cluck_info '9','10', $TEST;	# printed my_new_pref: 9 10 $TEST через Dunper
+log_cluck_info '7','8', $TEST;	# printed my_new_pref: 7 8 $TEST by Dunper
+Local::MRLog::log_cluck_info '9','10', $TEST;	# printed my_new_pref: 9 10 $TEST by Dunper
+# log_datum with hex instead of strings
+Local::MRLog::log_prefix('');	# rm prefix
+log_datum_info '7','8', $TEST;	# printed my_new_pref: 7 8 $TEST by Dunper
+Local::MRLog::log_datum_info '9','10', $TEST;	# printed my_new_pref: 9 10 $TEST by Dunper
+Local::MRLog::log_datum_info '123456';	# printed 31 32 33 34 35 36
+Local::MRLog::log_datum_info "\x01\x02\x03\x04\x05\x06";	# printed 01 02 03 04 05 06
 no Local::MRLog;
 
 =head2

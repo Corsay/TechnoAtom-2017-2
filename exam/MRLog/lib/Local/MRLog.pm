@@ -65,7 +65,7 @@ my $default_color = "\x1b[0m";
     print in STDERR only if log_level >= func_log_level
 =cut
 sub _log_main {
-	my ($level, $package, @args) = @_;
+	my ($level, $package, $datum, @args) = @_;
 	_check_package_log_level($package);	# проверяем что для данного модуля уже есть уровень логирования
 
 	my $cur_pac_level = $mod_log_levels{$package}{log_level};
@@ -85,9 +85,19 @@ sub _log_main {
 			my $printed_ref = Dumper($arg);
 			my @pr = split /\s+/, $printed_ref;
 			$printed_ref = join ' ', @pr;
+			if ($datum) {	# в формате hex кодов
+				my @arg = split //, $printed_ref;
+				for my $i (0..$#arg) { $arg[$i] = unpack 'H*', $arg[$i]; }
+				$printed_ref = join " ", @arg;
+			}
 			print STDERR $printed_ref;
 		}
 		else {
+			if ($datum) {	# в формате hex кодов
+				my @arg = split //, $arg;
+				for my $i (0..$#arg) { $arg[$i] = unpack 'H*', $arg[$i]; }
+				$arg = join " ", @arg;
+			}
 			print STDERR $arg;
 		}
 		print STDERR " " if @args;	# вывод пробела всегда кроме последнего аргумента
@@ -99,27 +109,27 @@ sub _log_main {
 # ToDo минимизировать количество идентичных вызовов log_<level> ...
 sub log_error {
 	my ($package) = caller;
-	_log_main('error', $package, @_);
+	_log_main('error', $package, 0, @_);	# 0 говорит что вывод в строковом формате
 }
 sub log_warn {
 	my ($package) = caller;
-	_log_main('warn', $package, @_);
+	_log_main('warn', $package, 0, @_);
 }
 sub log_info {
 	my ($package) = caller;
-	_log_main('info', $package, @_);
+	_log_main('info', $package, 0, @_);
 }
 sub log_debug1 {
 	my ($package) = caller;
-	_log_main('debug1', $package, @_);
+	_log_main('debug1', $package, 0, @_);
 }
 sub log_debug2 {
 	my ($package) = caller;
-	_log_main('debug2', $package, @_);
+	_log_main('debug2', $package, 0, @_);
 }
 sub log_debug3 {
 	my ($package) = caller;
-	_log_main('debug3', $package, @_);
+	_log_main('debug3', $package, 0, @_);
 }
 
 =head1 Loging_StackTrace_Output
@@ -143,27 +153,57 @@ sub _log_cluck_main {
 # ToDo минимизировать количество идентичных вызовов log_cluck_<level> ...
 sub log_cluck_error {
 	my ($package) = caller;
-	_log_cluck_main('error', $package, @_);
+	_log_cluck_main('error', $package, 0, @_);
 }
 sub log_cluck_warn {
 	my ($package) = caller;
-	_log_cluck_main('warn', $package, @_);
+	_log_cluck_main('warn', $package, 0, @_);
 }
 sub log_cluck_info {
 	my ($package) = caller;
-	_log_cluck_main('info', $package, @_);
+	_log_cluck_main('info', $package, 0, @_);
 }
 sub log_cluck_debug1 {
 	my ($package) = caller;
-	_log_cluck_main('debug1', $package, @_);
+	_log_cluck_main('debug1', $package, 0, @_);
 }
 sub log_cluck_debug2 {
 	my ($package) = caller;
-	_log_cluck_main('debug2', $package, @_);
+	_log_cluck_main('debug2', $package, 0, @_);
 }
 sub log_cluck_debug3 {
 	my ($package) = caller;
-	_log_cluck_main('debug3', $package, @_);
+	_log_cluck_main('debug3', $package, 0, @_);
+}
+
+
+=head1 Loging_Datum_Output
+	standart log_<level> func with hex-code presentation instead of string
+=cut
+# ToDo минимизировать количество идентичных вызовов log_datum_<level> ...
+sub log_datum_error {
+	my ($package) = caller;
+	_log_cluck_main('error', $package, 1, @_);	# 1 говорит что вывод в формате hex кодов
+}
+sub log_datum_warn {
+	my ($package) = caller;
+	_log_cluck_main('warn', $package, 1, @_);
+}
+sub log_datum_info {
+	my ($package) = caller;
+	_log_cluck_main('info', $package, 1, @_);
+}
+sub log_datum_debug1 {
+	my ($package) = caller;
+	_log_cluck_main('debug1', $package, 1, @_);
+}
+sub log_datum_debug2 {
+	my ($package) = caller;
+	_log_cluck_main('debug2', $package, 1, @_);
+}
+sub log_datum_debug3 {
+	my ($package) = caller;
+	_log_cluck_main('debug3', $package, 1, @_);
 }
 
 =head1 Loging_Checkers
