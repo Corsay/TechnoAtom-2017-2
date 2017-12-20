@@ -51,7 +51,7 @@ Getopt::Long::Configure("bundling");
 
 # Получаем опции в Хеш
 my $param = {};
-GetOptions ($param, 'help|?', 'man', 'N=i', 'r', 'l=i', 'L', 'S') 
+GetOptions ($param, 'help|?', 'man', 'N=i', 'r', 'l=i', 'L', 'S')
 	or ErrorInfoMsg($errorHelpInfo);
 
 # проверяем на минимально необходимые параметры
