@@ -4,9 +4,12 @@ use 5.006;
 use strict;
 use warnings;
 
+use Data::Dumper;
+use DDP;
+
 =head1 NAME
 
-MRLog - The great new module!
+MRLog - The great new Log module!
 
 =head1 VERSION
 
@@ -30,7 +33,21 @@ Perhaps a little code snippet.
     ToDo info about export functions
 
 =head1 SUBROUTINES/METHODS
+=cut
 
+# уровни логирования
+my %log_levels = (
+	error => 5,
+	warn => 4,
+	info => 3,
+	debug1 => 2,
+	debug2 => 1,
+	debug3 => 0,
+);
+# уровни логирования для конкретного модуля
+my %mod_log_levels = ();
+our $log_level = 'info';	# log_level по умолчанию
+our $log_prefix = '';	# log_prefix по умолчанию
 
 =head1 Loging_Output
     input -> args
@@ -40,7 +57,24 @@ Perhaps a little code snippet.
 =head2 log_error
 =cut
 sub log_error {
+	my @args = @_;
+	return if $log_level < $log_levels{error};	# if log level lower
 
+	# получаем prefix
+	my $prefix = $log_prefix;
+	$prefix = $log_prefix->( $log_level ) if (ref $log_prefix eq 'CODE');
+	print STDERR $prefix;
+
+	# выводим аргументы в STDERR
+	for my $arg (@args) {
+		if (ref $arg ne '') {
+			print STDERR Dumper($arg);
+		}
+		else {
+			print STDERR $arg;
+		}
+	}
+	print "\n";
 }
 
 =head2 log_warn
@@ -73,17 +107,34 @@ sub log_debug3 {
 
 }
 
-=head1 LogingLevel
+=head1 LogingManage
 =cut
 =head2 log_level
+    input -> new log_level for CURRENT module
 =cut
 sub log_level {
+	my $level = shift;
 
+	if ( exists $log_levels{$level} ) {
+		$log_level = $level;
+	}
+	# ToDo else -> неподдерживаемый уровень логирования
 }
+
 =head2 log_prefix
+	input -> string prefix or func ref.
+	if ref -> log_prefix = result of func.
+	if ref -> send as arg current log_level,
+    Ввод -> строковый префикс или ссылка на функцию
+    Если ссылка на функцию -> префикс = результат выполнения функции, непосредственно во время вывода данных.
+    Также в эту функцию в неё в качестве аргумента передается уровень логирования(чтобы его можно было вывести в префиксе)
 =cut
 sub log_prefix {
+	my $pref = shift;
 
+	# ToDo проверить на соответствие параметра ожидаемому (строка или ссылка на функцию)
+
+	$log_prefix = $pref;
 }
 
 =head1 AUTHOR
