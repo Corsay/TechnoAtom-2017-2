@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-use Data::Dumper;
+use Data::Dumper::OneLine;
 
 =head1 NAME
 
@@ -47,6 +47,7 @@ my $args_color = "\x1b[32m";
 my $default_color = "\x1b[0m";
 
 =head1 Loging_Output
+	input -> args in not private func
 =cut
 =head2 _log_main
     input -> log level of call function(string), package and args
@@ -116,11 +117,12 @@ sub log_debug3 {
 =head2
 	check existing of package log_level;
 	input -> pckage name
+	do -> add package log level info if it not exists
 	output -> nothing
 =cut
 sub _check_package_log_level {
 	my ($package) = @_;
-	$mod_log_levels{ $package }{ log_level } = $log_level unless (exists $mod_log_levels{ $package });	# устанавливаем log_level по умолчанию.
+	$mod_log_levels{ $package }{ log_level } = $log_levels{$log_level} unless (exists $mod_log_levels{ $package });	# устанавливаем вес log_level по умолчанию.
 	return;
 }
 
@@ -130,11 +132,12 @@ sub _check_package_log_level {
     input -> new log_level for CURRENT module
 =cut
 sub log_level {
+	my $self = shift;
 	my $level = shift;
 	my ($package) = caller;
 
 	if ( exists $log_levels{$level} ) {
-		$mod_log_levels{ $package }{ log_level } = $level;
+		$mod_log_levels{ $package }{ log_level } = $log_levels{$level};
 	}
 	# ToDo else -> неподдерживаемый уровень логирования
 }
@@ -164,8 +167,6 @@ Dmitriy, C<< <Dmitriy at Tcibisov.ru> >>
 Please report any bugs or feature requests to C<bug-mrlog at rt.cpan.org>, or through
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=MRLog>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
-
-
 
 
 =head1 SUPPORT
