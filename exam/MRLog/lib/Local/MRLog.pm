@@ -53,6 +53,7 @@ my $log_prefix = '';
 # цвета вывода
 my $prefix_color = "\x1b[1;34m";
 my $args_color = "\x1b[32m";
+my $stacktrace_color = "\x1b[35m";
 my $default_color = "\x1b[0m";
 
 =head1 Loging_Output
@@ -129,7 +130,14 @@ sub log_debug3 {
 =cut
 sub _log_cluck_main {
 	_log_main(@_);
-	# ToDo stacktrace
+	my $i = 0;
+	print STDERR $stacktrace_color;
+	while (1) {
+		my $pkg = caller($i++);
+		last unless $pkg;
+		print STDERR "	" . $pkg . "\n";
+	}
+	print STDERR $default_color;
 }
 
 # ToDo минимизировать количество идентичных вызовов log_cluck_<level> ...
