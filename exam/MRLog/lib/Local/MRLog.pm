@@ -65,7 +65,7 @@ my $default_color = "\x1b[0m";
     print in STDERR only if log_level >= func_log_level
 =cut
 sub _log_main {
-	my ($level, $package, $self, @args) = @_;
+	my ($level, $package, @args) = @_;
 	_check_package_log_level($package);	# проверяем что для данного модуля уже есть уровень логирования
 
 	my $cur_pac_level = $mod_log_levels{$package}{log_level};
@@ -189,7 +189,6 @@ sub _check_package_log_level {
     input -> new log_level for CURRENT module
 =cut
 sub log_level {
-	my $self = shift;
 	my $level = shift;
 	my ($package) = caller;
 
@@ -205,7 +204,6 @@ sub log_level {
 	if ref -> send as arg current log_level,
 =cut
 sub log_prefix {
-	my $self = shift;
 	my $pref = shift;
 	my ($package) = caller;
 
