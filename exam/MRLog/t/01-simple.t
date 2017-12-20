@@ -44,6 +44,9 @@ Local::MRLog::log_debug3('five', '6');	# printed my_pref: five 6
 Local::MRLog::log_prefix(sub { return $_[0] . ": "; });	# add prefix sub
 Local::MRLog::log_level('debug3');	# change log level for cur package to debug3 (max)
 Local::MRLog::log_debug3('five', '7');	# printed debug3: five 7
+
+Local::MRLog::log_prefix([1,2,3]);	# send incorrect prefix (prefix not changed)
+Local::MRLog::log_debug3('five', '8');	# printed debug3: five 7
 no Local::MRLog;
 
 package TestLogLevel2;

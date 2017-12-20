@@ -206,8 +206,7 @@ sub log_level {
 sub log_prefix {
 	my $pref = shift;
 	my ($package) = caller;
-
-	# ToDo проверить на соответствие параметра ожидаемому (строка или ссылка на функцию)
+	return if (ref $pref ne '' and ref $pref ne 'CODE');	# если не строка и не сслыка на функцию, то выходим не изменяя log_prefix
 
 	$mod_log_levels{ $package }{ log_prefix } = $pref;
 }
