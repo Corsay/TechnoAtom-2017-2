@@ -4,7 +4,7 @@ use 5.006;
 use strict;
 use warnings;
 
-use Data::Dumper::OneLine;
+use Data::Dumper;
 
 =head1 NAME
 
@@ -82,18 +82,9 @@ sub _log_main {
 		my $arg = shift @args;
 		if (ref $arg ne '') {
 			my $printed_ref = Dumper($arg);
-
-			#use DDP;
-			#p $printed_ref;
-			#$printed_ref = split "\n", $printed_ref;
-			#p $printed_ref;
-			#$printed_ref = join " ", $printed_ref;
-			#p $printed_ref;
-
-			#for my $line (@printed_ref) {
-			#	print STDERR $line;
-			#}
-			print STDERR Dumper($arg);
+			my @pr = split /\s+/, $printed_ref;
+			$printed_ref = join ' ', @pr;
+			print STDERR $printed_ref;
 		}
 		else {
 			print STDERR $arg;
@@ -139,7 +130,7 @@ sub log_debug3 {
 =head2
 	check existing of package log_level;
 	input -> pckage name
-	do -> add package log level info if it not exists
+	do -> add package log_level and log_prefix default info if it not exists
 	output -> nothing
 =cut
 sub _check_package_log_level {
@@ -171,9 +162,6 @@ sub log_level {
 	input -> string prefix or func ref.
 	if ref -> log_prefix = result of func.
 	if ref -> send as arg current log_level,
-    Ввод -> строковый префикс или ссылка на функцию
-    Если ссылка на функцию -> префикс = результат выполнения функции, непосредственно во время вывода данных.
-    Также в эту функцию в неё в качестве аргумента передается уровень логирования(чтобы его можно было вывести в префиксе)
 =cut
 sub log_prefix {
 	my $self = shift;
@@ -181,6 +169,7 @@ sub log_prefix {
 	my ($package) = caller;
 
 	# ToDo проверить на соответствие параметра ожидаемому (строка или ссылка на функцию)
+
 	$mod_log_levels{ $package }{ log_prefix } = $pref;
 }
 
