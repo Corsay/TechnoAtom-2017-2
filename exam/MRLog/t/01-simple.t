@@ -22,7 +22,7 @@ my $TEST = {
 
 # ToDo перенапрвлять STDERR в handler и сравнивать результат с ожидаемым
 
-# Тест уровней логирования
+# Тест уровней логирования (обращение на прямую)
 use Local::MRLog;
 Local::MRLog->log_debug1('one','two');	# default log level = info (nothing printed)
 Local::MRLog->log_info('1','2', $TEST);	# printed '1','2', $TEST
@@ -44,3 +44,33 @@ Local::MRLog->log_debug3('five', '6');	# printed my_pref: five 6
 Local::MRLog->log_prefix(sub { return $_[0] . ": "; });	# добавим префикс функцию
 Local::MRLog->log_level('debug3');	# change log level for cur package to debug3 (max)
 Local::MRLog->log_debug3('five', '7');	# printed debug3: five 7
+no Local::MRLog;
+
+=head2
+	# ToDo дотестировать (our %mod_log_levels используется из пакета Local::MRLog)
+=cut
+=head Comment
+	package TestLogLevel2;
+	# Тест уровней логирования (обращение с учётом import)
+	use Local::MRLog;
+	log_debug1('one','two');	# default log level = info (nothing printed)
+	log_info('1','2', $TEST);	# printed '1','2', $TEST
+
+	log_level('error');	# change log level for cur package to error
+	log_warn('3','4');	# try to print warn (but warn bigger than error)
+
+	log_level('warn');	# change log level for cur package to warn
+	log_warn('five');		# printed 'five'
+	log_level('debug3');	# change log level for cur package to debug3 (max)
+
+	package TestLogLevel32;
+	log_debug3('7');	# nothing printed because cur package log_level = info
+
+	log_prefix('my_pref: ');	# добавим префикс
+	log_level('debug3');	# change log level for cur package to debug3 (max)
+	log_debug3('five', '6');	# printed my_pref: five 6
+
+	log_prefix(sub { return $_[0] . ": "; });	# добавим префикс функцию
+	log_level('debug3');	# change log level for cur package to debug3 (max)
+	log_debug3('five', '7');	# printed debug3: five 7
+=cut

@@ -173,6 +173,46 @@ sub log_prefix {
 	$mod_log_levels{ $package }{ log_prefix } = $pref;
 }
 
+=head1 Import\Unimport
+=cut
+sub def_import {
+	my $pkg = shift;
+	{
+		no strict 'refs';
+		*{"${pkg}::$_"} = \&{$_} foreach qw/log_error log_warn log_info log_debug1 log_debug2 log_debug3 log_level log_prefix/;
+		#*{"${pkg}::%mod_log_levels"} = \%mod_log_levels;	# ToDo share our %mod_log_levels
+	}
+}
+sub def_unimport {
+	my $pkg = shift;
+	{
+		no strict 'refs';
+		delete ${"${pkg}::"}{$_} foreach qw/log_error log_warn log_info log_debug1 log_debug2 log_debug3 log_level log_prefix/;
+	}
+}
+sub import {
+	my $self = shift;
+	my $pkg = caller;
+
+	def_import($pkg);	# то что import по умолчанию
+
+	foreach my $func (@_) {
+		no strict 'refs';
+		*{"${pkg}::$func"} = \&{$func};
+	}
+}
+sub unimport {
+	my $self = shift;
+	my $pkg = caller;
+
+	def_unimport($pkg);	# то что unimport по умолчанию
+
+	{
+		no strict 'refs';
+		delete ${"${pkg}::"}{$_} foreach @_;
+	}
+}
+
 =head1 AUTHOR
 
 Dmitriy, C<< <Dmitriy at Tcibisov.ru> >>
