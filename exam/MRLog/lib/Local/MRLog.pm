@@ -5,28 +5,20 @@ use strict;
 use warnings;
 
 use Data::Dumper;
-use DDP;
 
 =head1 NAME
 
-MRLog - The great new Log module!
+    MRLog - The great new Log module!
 
 =head1 VERSION
 
-Version 1.00
+    Version 1.00
 
 =cut
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
-
-Perhaps a little code snippet.
-
-    use MRLog;
-
-    my $foo = MRLog->new();
-    ...
+    ToDo info about what module does
 
 =head1 EXPORT
 
@@ -37,86 +29,112 @@ Perhaps a little code snippet.
 
 # уровни логирования
 my %log_levels = (
-	error => 5,
-	warn => 4,
-	info => 3,
-	debug1 => 2,
-	debug2 => 1,
-	debug3 => 0,
+	error => 0,
+	warn => 1,
+	info => 2,
+	debug1 => 3,
+	debug2 => 4,
+	debug3 => 5,
 );
-# уровни логирования для конкретного модуля
-my %mod_log_levels = ();
-our $log_level = 'info';	# log_level по умолчанию
-our $log_prefix = '';	# log_prefix по умолчанию
+# уровни логирования для каждого вызывающего модуля
+our %mod_log_levels = ();
+# по-умолчанию
+my $log_level = 'info';
+my $log_prefix = '';
+# цвета вывода
+my $prefix_color = "\x1b[1;34m";
+my $args_color = "\x1b[32m";
+my $default_color = "\x1b[0m";
 
 =head1 Loging_Output
-    input -> args
+=cut
+=head2 _log_main
+    input -> log level of call function(string), package and args
     output -> output args to STDERR in one line, joined by " "
     print in STDERR only if log_level >= func_log_level
 =cut
-=head2 log_error
-=cut
-sub log_error {
-	my @args = @_;
-	return if $log_level < $log_levels{error};	# if log level lower
+sub _log_main {
+	my ($level, $package, $self, @args) = @_;
+	_check_package_log_level($package);	# проверяем что для данного модуля уже есть уровень логирования
+
+	my $cur_pac_level = $mod_log_levels{$package}{log_level};
+	return if $cur_pac_level < $log_levels{$level};	# если уровень логирования меньше чем требуемый
 
 	# получаем prefix
 	my $prefix = $log_prefix;
-	$prefix = $log_prefix->( $log_level ) if (ref $log_prefix eq 'CODE');
-	print STDERR $prefix;
+	$prefix = $log_prefix->( $cur_pac_level ) if (ref $log_prefix eq 'CODE');
+	print STDERR $prefix_color . $prefix . $default_color;
 
 	# выводим аргументы в STDERR
-	for my $arg (@args) {
+	print STDERR $args_color;
+	while (@args) {
+		my $arg = shift @args;
 		if (ref $arg ne '') {
 			print STDERR Dumper($arg);
 		}
 		else {
 			print STDERR $arg;
 		}
+		print STDERR " " if @args;	# вывод пробела всегда кроме последнего аргумента
 	}
-	print "\n";
+	print STDERR $default_color;
+	print STDERR "\n";
 }
 
-=head2 log_warn
-=cut
+sub log_error {
+	my ($package) = caller;
+	_log_main('error', $package, @_);
+}
+
 sub log_warn {
-
+	my ($package) = caller;
+	_log_main('warn', $package, @_);
 }
 
-=head2 log_info
-=cut
 sub log_info {
-
+	my ($package) = caller;
+	_log_main('info', $package, @_);
 }
 
-=head2 log_debug1
-=cut
 sub log_debug1 {
-
+	my ($package) = caller;
+	_log_main('debug1', $package, @_);
 }
 
-=head2 log_debug2
-=cut
 sub log_debug2 {
-
+	my ($package) = caller;
+	_log_main('debug2', $package, @_);
 }
 
-=head2 log_debug3
-=cut
 sub log_debug3 {
-
+	my ($package) = caller;
+	_log_main('debug3', $package, @_);
 }
 
-=head1 LogingManage
+=head1 Loging_Checkers
+=cut
+=head2
+	check existing of package log_level;
+	input -> pckage name
+	output -> nothing
+=cut
+sub _check_package_log_level {
+	my ($package) = @_;
+	$mod_log_levels{ $package }{ log_level } = $log_level unless (exists $mod_log_levels{ $package });	# устанавливаем log_level по умолчанию.
+	return;
+}
+
+=head1 Loging_Manage
 =cut
 =head2 log_level
     input -> new log_level for CURRENT module
 =cut
 sub log_level {
 	my $level = shift;
+	my ($package) = caller;
 
 	if ( exists $log_levels{$level} ) {
-		$log_level = $level;
+		$mod_log_levels{ $package }{ log_level } = $level;
 	}
 	# ToDo else -> неподдерживаемый уровень логирования
 }
